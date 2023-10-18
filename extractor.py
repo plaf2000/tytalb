@@ -7,21 +7,40 @@ import os
 #     def __init__(self):
 #         super().__init__("The file you provided is not a readable audio file.")
 
+
+
 class AudioFile:
     audio_segment: AudioSegment = None
     
     def __init__(self, path):
         self.path = path
+        self.basename = os.path.basename(path).split(".")[0]
 
     def load(self):
         if self.audio_segment is None:
             self.audio_segment = AudioSegment.from_file(self.path)
 
-    def export_segment(self, tstart, tend, out_path, *args):
+    def export_segment(self, tstart, tend, dir_path, audio_format):
         self.load()
+        out_path = os.path.join(dir_path, f"{self.basename}_{tstart:09.0f}_{tend:09.0f}.{audio_format}")
         self.audio_segment[tstart:tend].export(out_path)
 
 
+    def export_for_birdnet(self, tstart, tend, dir_path, audio_format = "flac", overlap_long = False):
+        def full_name(ts, te):
+            return
+        if tstart - tend <= 3000:
+            self.export_segment(tstart, tend, dir_path, audio_format)
+            return
+        
+        tend_orig = tend
+        while tend < tend_orig:
+            tend = tstart 
+            self.export_segment(tstart, tend, dir_path, audio_format)
+            tstart = tend
+            if overlap_long:
+                tstart -= 500
+        
 
 class Detection:
     tstart: float
@@ -40,8 +59,15 @@ class Detection:
         return self.tstart * 1000
 
     @property
-    def tend_(self):
+    def tend_ms(self):
         return self.tend * 1000
+    
+    def export_for_birdnet(self, base_path, **kwargs):
+        dir_path = os.path.join(base_path, self.label)
+        if not os.path.isdir(dir_path):
+            os.mkdir(base_path)
+        self.audio_file.export_for_birdnet(self.tstart_ms, self.tend_ms, **kwargs)
+
     
 class DurDetection(Detection):
     def __init__(self, tstart, dur, label, audio_file):
@@ -58,16 +84,14 @@ class Column:
     def get_val(self, row: list):
         return row[self.colindex]
 
-    
-
 @dataclass
-class TableFormat:
+class TableParser:
     names: list[str]
     delimiter: str
     tstart: Column
     tend: Column
     label: Column
-    file: Column = None
+    file: list[Column] = None
     detection_type = Detection
     head: bool
 
@@ -81,8 +105,10 @@ class TableFormat:
 
     def read_row(self, row: list, audio_file: AudioFile = None) -> Detection:
         if self.file is not None:
-            audio_file = AudioFile(self.file.get_val(row))
-        return self.detection(
+            full_path = os.path.join(*[p.get_val(row) for p in self.file])
+            audio_file = AudioFile(full_path)
+
+        return self.detection_type(
             *[col.get_val(row) for col in self.columns],
             audio_file=audio_file,
         )
@@ -103,35 +129,56 @@ class TableFormat:
                 detections.append(self.read_row(row))
             
 
-class KaleidoscopeParser(TableFormat):
-    names = ["Kaleidoscope"]
+class KaleidoscopeParser(TableParser):
+    names = ["kaleidoscope", "ks"]
     delimiter = ","
     tstart = Column("OFFSET", 3)
     tend = Column("DURATION", 4)
-    t = Column("DURATION", 5)
+    label = Column("scientific_name", 5)
+    file =  [
+        Column("INDIR", 0),
+        Column("FOLDER", 1),
+        Column("IN FILE", 2),
+    ]
     head = True
+    detection_type = DurDetection
 
-    def read_row(self, row: list, _) -> Detection:
-        det = super().read_row(row)
-        det.tend = det.tstart + det.tend
-                
-        
-        
+class SonicParser(TableParser):
+    names = ["sonic-visualizer", "sonic-visualiser", "sv"]
+    delimiter = ","
+    tstart = Column("START", 0)
+    tend = Column("END", 1)
+    label = Column("LABEL", 4)
+    head = False
+
+class AudacityParser(TableParser):
+    names = ["sonic-visualizer", "sonic-visualiser", "sv"]
+    delimiter = "\t"
+    tstart = Column(None, 0)
+    tend = Column(None, 1)
+    label = Column(None, 2)
+    head = False
+
+class RavenParser(TableParser):
+    names = ["raven", "rvn"]
+    delimiter = "\t"
+    tstart = Column("Begin Time (s)", 3)
+    tend = Column("End Time (s)", 4)
+    label = Column("Annotation", 10)
+    head = True      
 
 class DetectionsParser:
-    raven_names = ["raven"]
-    audacity_names = ["raven"]
-    kaleidoscope_names = ["kaleidoscope"]
-    sonic_names = ["sonic-visualizer", "sonic", "sv"]
-
-    table_formats = [
-        TableFormat(["raven"])
+    table_parsers = [
+        KaleidoscopeParser(),
+        SonicParser(),
+        AudacityParser(),
+        RavenParser(),
     ]
 
     def __init__(self, table_format: str):
         self.table_format_name = table_format.lower()
-        self.table_format = None
-        for tf in self.table_formats:
+        self.table_format: TableParser = None
+        for tf in self.table_parsers:
             if self.table_format_name == tf:
                 self.table_format = tf
         if self.table_format is None:
@@ -160,16 +207,6 @@ class BirdNetExtractor:
             ts_i = thead.index("Begin Time (s)")
             te_i = thead.index("End Time (s)")
             audio_file: AudioSegment = AudioSegment.from_file(audiofile_path)
-
-            for row in csvr:
-                tstart = int((float(row[ts_i])) * 1000)
-                tend = int((float(row[te_i])) * 1000)
-
-                if tend - tstart > 3000:
-                    tend_orig = tend
-                    while tend < tend_orig:
-                        tend = tstart + 3000
-                        tstart = tend
 
     def extract_all(self):
         for tpath, apath in zip(self.tables_paths, self.audiofiles_paths):
