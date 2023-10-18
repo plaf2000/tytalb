@@ -43,23 +43,17 @@ class Detection:
     def tend_(self):
         return self.tend * 1000
     
+class DurDetection(Detection):
+    def __init__(self, tstart, dur, label, audio_file):
+        super().__init__(tstart, tstart+dur, label, audio_file)    
 
+@dataclass
 class Column:
     colname: str = None
     colindex: int = None
-    head: bool
-
-    def __init__(self, colname, colindex, head):
-        self.head = head
-        if head:
-            self.colname = colname
-        else:
-            self.colindex = colindex
-
 
     def set_coli(self, head_row: list):
-        if self.head:
-            self.colindex = head_row.index(self.colname)
+        self.colindex = head_row.index(self.colname)
 
     def get_val(self, row: list):
         return row[self.colindex]
@@ -74,19 +68,21 @@ class TableFormat:
     tend: Column
     label: Column
     file: Column = None
+    detection_type = Detection
     head: bool
 
     def __post_init__(self):
         self.columns = [self.tstart, self.tend, self.label]
 
     def set_coli(self, *args, **kwargs):
-        for col in self.columns:
-            col.set_coli(*args, **kwargs)
+        if self.head:
+            for col in self.columns:
+                col.set_coli(*args, **kwargs)
 
-    def read_row(self, row: list, audio_file: AudioFile) -> Detection:
+    def read_row(self, row: list, audio_file: AudioFile = None) -> Detection:
         if self.file is not None:
             audio_file = AudioFile(self.file.get_val(row))
-        return Detection(
+        return self.detection(
             *[col.get_val(row) for col in self.columns],
             audio_file=audio_file,
         )
@@ -110,11 +106,14 @@ class TableFormat:
 class KaleidoscopeParser(TableFormat):
     names = ["Kaleidoscope"]
     delimiter = ","
-    tstart = "OFFSET"
-    tend_colname = "DURATION"
+    tstart = Column("OFFSET", 3)
+    tend = Column("DURATION", 4)
+    t = Column("DURATION", 5)
+    head = True
 
     def read_row(self, row: list, _) -> Detection:
-        tstart = self.
+        det = super().read_row(row)
+        det.tend = det.tstart + det.tend
                 
         
         
