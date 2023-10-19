@@ -20,16 +20,18 @@ class AudioFile:
         self.audio_segment[tstart:tend].export(out_path)
 
 
-    def export_for_birdnet(self, tstart, tend, dir_path, audio_format = "flac", overlap_ms = 0):
-        if tstart - tend <= 3000:
+    def export_for_birdnet(self, tstart, tend, dir_path, audio_format = "flac", overlap_ms = 0, **kwargs):
+        if tend - tstart <= 3000:
             self.export_segment(tstart, tend, dir_path, audio_format)
             return
         
         tend_orig = tend
-        while tend < tend_orig:
-            tend = tstart 
-            self.export_segment(tstart, tend, dir_path, audio_format)
+        start = True
+        while start or tend < tend_orig:
+            tend = tstart + 3000
+            self.export_segment(tstart, min(tend_orig, tend), dir_path, audio_format)
             tstart = tend - overlap_ms
+            start = False
         
 
 class Detection:
@@ -55,8 +57,8 @@ class Detection:
     def export_for_birdnet(self, base_path, **kwargs):
         dir_path = os.path.join(base_path, self.label)
         if not os.path.isdir(dir_path):
-            os.mkdir(base_path)
-        self.audio_file.export_for_birdnet(self.tstart_ms, self.tend_ms, **kwargs)
+            os.mkdir(dir_path)
+        self.audio_file.export_for_birdnet(self.tstart_ms, self.tend_ms, dir_path, **kwargs)
 
     
 class DurDetection(Detection):
@@ -81,8 +83,8 @@ class TableParser:
     tstart: Column
     tend: Column
     label: Column
+    detection_type: Detection
     audio_file_path: list[Column] = None
-    detection_type = Detection
     header: bool = True
     file_ext: str = "csv"
 
@@ -94,22 +96,25 @@ class TableParser:
             for col in self.columns:
                 col.set_coli(*args, **kwargs)
 
-    def read_row(self, row: list, audio_file: AudioFile = None) -> Detection:
-        if self.file is not None:
+    def read_row(self, row: list, *args, **kwargs) -> Detection:
+        if self.audio_file_path is not None:
             full_path = os.path.join(*[p.get_val(row) for p in self.audio_file_path])
             audio_file = AudioFile(full_path)
+        else:
+            audio_file = AudioFile(self.get_audio_file_path(*args, **kwargs))
 
         return self.detection_type(
             *[col.get_val(row) for col in self.columns],
             audio_file=audio_file,
         )
     
-    def get_audio_file(self, table_path: str):
+    def get_audio_file_path(self, table_path: str, audio_file_dir_path: str, audio_file_ext: str, *args, **kwargs):
         if self.audio_file_path is None:
-            return table_path.split(".")[:-1]           
+            table_basename = os.path.basename(table_path)
+            base_path = os.path.join(audio_file_dir_path, table_basename.split(".")[0])
+            return ".".join([base_path, audio_file_ext])
 
-
-    def get_detections(self, table_path) -> list[Detection]:
+    def get_detections(self, table_path, *args, **kwargs) -> list[Detection]:
         detections = []
         with open(table_path) as fp:
             csvr = csv.reader(fp, delimiter=self.delimiter)
@@ -117,7 +122,7 @@ class TableParser:
                 theader = next(csvr)
                 self.set_coli(theader)
             for row in csvr:
-                detections.append(self.read_row(row))
+                detections.append(self.read_row(row, table_path, *args, **kwargs))
         return detections
     
     def is_table(self, table_path: str):
