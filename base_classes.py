@@ -3,53 +3,39 @@ from pydub.utils import mediainfo
 from dataclasses import dataclass
 from math import ceil
 from typing import Generator
+import random
 import numpy as np
 
 import os
 import csv
 
 
-class TimeUnit:
-    s: float
-    ms: float
-
+class TimeUnit(float):
     def __init__(self, s: float = 0, ms: float = None):
         if ms is not None:
             s = s / 1000
-        self.s = s
-    def __float__(self):
-        return self.s
-
-    def __eq__(self, other):
-        self.s == other.s
-
-    def __gt__(self, other):
-        self.s > other.s
-
-    def __lt__(self, other):
-        self.s < other.s
-
-    def __ge__(self, other):
-        self.s >= other.s
-
-    def __le__(self, other):
-        self.s <= other.s
+        self = float(s)
 
     def __add__(self, other):
-        return TimeUnit(self.s + other.s)
+        return TimeUnit(super().__add__(other))
+    
+    def __mul__(self, other):
+        return TimeUnit(super().__mul__(other))
     
     def __sub__(self, other):
-        return TimeUnit(self.s - other.s)
+        return TimeUnit(super().__sub__(other))
 
-    def __mul__(self, other):
-        return TimeUnit(self.s * other.s)
+    def __truediv__(self, other):
+        return TimeUnit(super().__truediv__(other))
+
     
-    def copy(self):
-        return TimeUnit(self.s)
+    @property
+    def s(self):
+        return self
     
     @property
     def ms(self):
-        return int(self.s * 1000)
+        return int(self * 1000)
 
 BIRDNET_AUDIO_DURATION = TimeUnit(3)
 
@@ -76,7 +62,6 @@ class AudioFile:
     def __init__(self, path):
         self.path = path
         self.basename = os.path.basename(path).split(".")[0]
-        self.exported_intervals = 0
 
     def load(self):
         if self.audio_segment is None:
@@ -113,8 +98,7 @@ class AudioFile:
         if export_metadata:
             tags = mediainfo(self.path)['TAG']
         out_name = f"{self.basename}_{tstart.s:06.0f}_{tend.s:06.0f}.{audio_format}"
-        out_path = os.path.join(dir_path,
-        out_name)
+        out_path = os.path.join(dir_path, out_name)
         self.audio_segment[int(tstart.ms):int(tend.ms)].export(out_path, tags=tags)
         if mark_exported:
             self.exported_mask[int(tstart.s):int(ceil(tend.s))] = True
@@ -124,7 +108,7 @@ class AudioFile:
         dir_path: str = os.path.join(base_path, detection.label)
         os.makedirs(dir_path, exist_ok=True)
 
-        tstart, tend = detection.tstart.copy(), detection.tend.copy()
+        tstart, tend = detection.tstart, detection.tend
 
         if overlap_perc > 0:
             overlap_s: float = BIRDNET_AUDIO_DURATION.s * overlap_perc
@@ -144,15 +128,30 @@ class AudioFile:
             tstart = tend - overlap
             start = False
 
-    def export_noise_birdnet(self, base_path: str, audio_format: str = "flac", keep_perc = .1, **kwargs):
-        diff = np.diff(self.exported_mask.astype(np.int8))
-        tstarts = list(np.nonzero(diff == -1))
-        tends = list(np.nonzero(diff == 1))
+    def export_noise_birdnet(self, base_path: str, audio_format: str = "flac", export_prob = None, export_perc = .1, **kwargs):
+        not_exp = ~self.exported_mask
+        diff = np.diff(not_exp.astype(np.int8), prepend=0, append=0)
+        if export_prob is None:
+            noise_ratio = np.sum(not_exp) / len(not_exp)
+            export_prob = export_perc # TODO: Change this
+        tstarts = np.flatnonzero(diff == 1)
+        tends = np.flatnonzero(diff == -1)
+        random.seed(self.basename)
 
+        dir_path: str = os.path.join(base_path, "Noise")
+        os.makedirs(dir_path, exist_ok=True)
         
 
-
-
+        for ts, te in zip(tstarts, tends):
+            n_splits  = int((te-ts) / BIRDNET_AUDIO_DURATION.s)
+            indexes = np.arange(n_splits) 
+            k = int(round(n_splits * export_perc))
+            indexes_to_export = random.choices(indexes, k = k)
+            for i in indexes_to_export:
+                tstart = TimeUnit(s=ts) + i * BIRDNET_AUDIO_DURATION
+                tend = tstart + BIRDNET_AUDIO_DURATION
+                self.export_segment(tstart, tend, dir_path, audio_format, mark=False, **kwargs)
+            
 
 
 @dataclass
@@ -206,6 +205,7 @@ class TableParser:
         base_path: str = os.path.join(audio_file_dir_path, table_basename.split(".")[0])
         audio_path: str = ".".join([base_path, audio_file_ext])
         audio_file = AudioFile(audio_path)
+        self.all_audio_files.setdefault(audio_path, audio_file)
         while True:
             yield audio_file
 

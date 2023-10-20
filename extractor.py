@@ -55,7 +55,7 @@ class BirdNetExtractor:
 
     def extract_noise_all_files(self, export_dir: str, **kwargs):
         for af in self.parser.all_audio_files.values():
-            af.export_noise_birdnet(**kwargs)
+            af.export_noise_birdnet(export_dir,**kwargs)
 
 
     def extract_for_training(self, audio_files_dir: str, audio_file_ext: str, export_dir: str,  **kwargs):

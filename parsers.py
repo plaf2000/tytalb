@@ -93,8 +93,7 @@ class KaleidoscopeParser(TableParser):
                 self.set_coli(theader)
             for row in csvr:
                 audio_file_path = os.path.join(*[p.get_val(row) for p in self.audio_file_path])
-                if not audio_file_path in self.all_audio_files:
-                    self.all_audio_files[audio_file_path] = AudioFile(audio_file_path)
+                self.all_audio_files.setdefault(audio_file_path, AudioFile(audio_file_path))
                 yield self.all_audio_files[audio_file_path]
 
 
