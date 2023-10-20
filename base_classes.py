@@ -1,69 +1,90 @@
 from pydub import AudioSegment
+from pydub.utils import mediainfo
 from dataclasses import dataclass
+from math import ceil
+from typing import Generator
+import numpy as np
+
 import os
 import csv
 
+BIRDNET_AUDIO_DURATION_MS = 3000
+
+class TimeUnit:
+    s: float
+    ms: float
+
+    def __init__(self, s):
+        self.s = s
+        self.ms = s * 1000
+
+class Detection:
+    tstart: float
+    tend: float
+    label: str
+
+    def __init__(self, tstart, tend, label):
+        self.tstart = TimeUnit(float(tstart))
+        self.tend = TimeUnit(float(tend))
+        self.label = label    
+        
+
+class DurDetection(Detection):
+    def __init__(self, tstart, dur, label, audio_file):
+        super().__init__(tstart, tstart+dur, label, audio_file)    
+
 class AudioFile:
-    audio_segment: AudioSegment = None
+    audio_segment: AudioSegment
+    exported_intervals: list[list]
+    exported_mask: np.ndarray
     
     def __init__(self, path):
         self.path = path
         self.basename = os.path.basename(path).split(".")[0]
+        self.exported_intervals = 0
 
     def load(self):
         if self.audio_segment is None:
-            self.audio_segment = AudioSegment.from_file(self.path)
-
-    def export_segment(self, tstart, tend, dir_path, audio_format):
+            self.audio_segment: AudioSegment = AudioSegment.from_file(self.path)
+            self.exported_mask = np.array(self.audio_segment.duration_seconds)
+        
+    def export_segment(self, tstart: TimeUnit, tend: TimeUnit, dir_path: str, audio_format: str, mark_exported: bool = True, export_metadata: bool = True):
         self.load()
-        out_path = os.path.join(dir_path, f"{self.basename}_{tstart:09.0f}_{tend:09.0f}.{audio_format}")
-        self.audio_segment[tstart:tend].export(out_path)
+        tags = None
+        if export_metadata:
+            tags = mediainfo(self.path)['TAG']
+        out_name = f"{self.basename}_{tstart.s:06.0f}_{tend.s:06.0f}.{audio_format}"
+        out_path = os.path.join(dir_path, out_name)
+        self.audio_segment[int(tstart.ms):int(tend.ms)].export(out_path, tags=tags)
+        if mark_exported:
+            self.exported_mask[int(tstart.s):int(ceil(tend.s))] = True
 
 
-    def export_for_birdnet(self, tstart, tend, dir_path, audio_format = "flac", overlap_ms = 0, **kwargs):
-        if tend - tstart <= 3000:
+    def export_for_birdnet(self, detection: Detection, base_path: str, audio_format: str = "flac", overlap_s: float = 0, overlap_perc: float=0, **kwargs):
+        dir_path: str = os.path.join(base_path, detection.label)
+        os.makedirs(dir_path, makedirs=True)
+
+        tstart, tend = detection.tstart_ms, detection.tend_ms
+
+        if overlap_perc > 0:
+            overlap_ms = int(BIRDNET_AUDIO_DURATION_MS * overlap_perc)
+        overlap_ms = max(0, min(overlap_ms, BIRDNET_AUDIO_DURATION_MS - 1))
+
+        if tend - tstart <= BIRDNET_AUDIO_DURATION_MS:
             self.export_segment(tstart, tend, dir_path, audio_format)
             return
         
         tend_orig = tend
         start = True
         while start or tend < tend_orig:
-            tend = tstart + 3000
+            tend = tstart + BIRDNET_AUDIO_DURATION_MS
             self.export_segment(tstart, min(tend_orig, tend), dir_path, audio_format)
             tstart = tend - overlap_ms
             start = False
-        
 
-class Detection:
-    tstart: float
-    tend: float
-    label: str
-    audio_file: AudioFile
-
-    def __init__(self, tstart, tend, label, audio_file):
-        self.tstart = float(tstart)
-        self.tend = float(tend)
-        self.label = label
-        self.audio_file = audio_file
-
-    @property
-    def tstart_ms(self):
-        return self.tstart * 1000
-
-    @property
-    def tend_ms(self):
-        return self.tend * 1000
+        self.export_segment(tstart, tend, dir_path, **kwargs)
     
-    def export_for_birdnet(self, base_path, **kwargs):
-        dir_path = os.path.join(base_path, self.label)
-        if not os.path.isdir(dir_path):
-            os.mkdir(dir_path)
-        self.audio_file.export_for_birdnet(self.tstart_ms, self.tend_ms, dir_path, **kwargs)
 
-    
-class DurDetection(Detection):
-    def __init__(self, tstart, dur, label, audio_file):
-        super().__init__(tstart, tstart+dur, label, audio_file)    
 
 @dataclass
 class Column:
@@ -84,47 +105,41 @@ class TableParser:
     tend: Column
     label: Column
     detection_type: Detection
-    audio_file_path: list[Column] = None
     header: bool = True
     file_ext: str = "csv"
 
     def __post_init__(self):
         self.columns = [self.tstart, self.tend, self.label]
+        self.all_columns = self.columns
+        self.all_audio_files = {}
 
     def set_coli(self, *args, **kwargs):
         if self.header:
             for col in self.columns:
                 col.set_coli(*args, **kwargs)
 
-    def read_row(self, row: list, *args, **kwargs) -> Detection:
-        if self.audio_file_path is not None:
-            full_path = os.path.join(*[p.get_val(row) for p in self.audio_file_path])
-            audio_file = AudioFile(full_path)
-        else:
-            audio_file = AudioFile(self.get_audio_file_path(*args, **kwargs))
-
+    def get_detection(self, row: list, *args, **kwargs) -> Detection:
         return self.detection_type(
-            *[col.get_val(row) for col in self.columns],
-            audio_file=audio_file,
+            *[col.get_val(row) for col in self.all_columns]
         )
-    
-    def get_audio_file_path(self, table_path: str, audio_file_dir_path: str, audio_file_ext: str, *args, **kwargs):
-        if self.audio_file_path is None:
-            table_basename = os.path.basename(table_path)
-            base_path = os.path.join(audio_file_dir_path, table_basename.split(".")[0])
-            return ".".join([base_path, audio_file_ext])
 
-    def get_detections(self, table_path, *args, **kwargs) -> list[Detection]:
-        detections = []
+    def get_detections(self, table_path: str, *args, **kwargs) -> Generator[Detection]:
         with open(table_path) as fp:
             csvr = csv.reader(fp, delimiter=self.delimiter)
             if self.header:
                 theader = next(csvr)
                 self.set_coli(theader)
             for row in csvr:
-                detections.append(self.read_row(row, table_path, *args, **kwargs))
-        return detections
+                yield self.get_detection(row, table_path, *args, **kwargs)
     
+    def get_audio_files_paths(self, table_path: str, audio_file_dir_path: str, audio_file_ext: str) -> Generator[AudioFile]:
+        table_basename: str = os.path.basename(table_path)
+        base_path: str = os.path.join(audio_file_dir_path, table_basename.split(".")[0])
+        audio_path: str = ".".join([base_path, audio_file_ext])
+        audio_file = AudioFile(audio_path)
+        while True:
+            yield audio_file
+
     def is_table(self, table_path: str):
         fname = os.path.basename(table_path)
         return fname.endswith(f".{self.file_ext}")

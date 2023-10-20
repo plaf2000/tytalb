@@ -1,5 +1,8 @@
-from base_classes import TableParser, Column, DurDetection, Detection
+from base_classes import TableParser, Column, DurDetection, Detection, AudioFile
 from inspect import signature
+import csv
+import os 
+
 
 def collect_args(all_locs: dict):
     args = [arg for arg in signature(TableParser.__init__).parameters]
@@ -61,25 +64,39 @@ class RavenParser(TableParser):
 
 
 class KaleidoscopeParser(TableParser):
-    
-
-
-        
     def __init__(self, 
         names = ["kaleidoscope", "ks"],
         delimiter = ",",
         tstart = Column("OFFSET", 3),
         tend = Column("DURATION", 4),
         label = Column("scientific_name", 5),
-        file =  [
+        detection_type = DurDetection,
+        **kwargs
+    ):
+        super().__init__(**collect_args(locals()))
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.audio_file_path: list[Column] =  [
             Column("INDIR", 0),
             Column("FOLDER", 1),
             Column("IN FILE", 2),
         ],
-        detection_type = DurDetection,
-        **kwargs
-    ):
-        super().__init__(**collect_args(locals())) 
+        self.all_columns += self.audio_file_path
+    
+    def get_audio_files_paths(self, table_path, *args, **kwargs):
+        with open(table_path) as fp:
+            csvr = csv.reader(fp, delimiter=self.delimiter)
+            if self.header:
+                theader = next(csvr)
+                self.set_coli(theader)
+            for row in csvr:
+                audio_file_path = os.path.join(*[p.get_val(row) for p in self.audio_file_path])
+                if not audio_file_path in self.all_audio_files:
+                    self.all_audio_files[audio_file_path] = AudioFile(audio_file_path)
+                yield self.all_audio_files[audio_file_path]
+
+        
 
 
 available_parsers = [

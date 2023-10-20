@@ -42,8 +42,7 @@ class BirdNetExtractor:
 
     def extract_from_table(self, table_path, audio_files_dir, audio_file_ext,  **kwargs):
         detections = self.parser.get_detections(table_path, audio_files_dir, audio_file_ext)
-        for det in detections:
-            det.export_for_birdnet(self.export_dir, **kwargs)
+        audiofiles = self.parser.get_audio_files(self.export_dir, **kwargs)
 
     def extract_all(self, **kwargs):
         for tp in self.tables_paths:
@@ -60,6 +59,6 @@ if __name__ == "__main__":
         False
     )
 
-    extr.extract_all(overlap_ms=1000)
+    extr.extract_all()
     
 
