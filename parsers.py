@@ -23,7 +23,7 @@ class SonicParser(TableParser):
         detection_type = Detection,
         audio_file_path = None,
         header = False,
-        file_ext = "csv",
+        table_fnmatch = "*.csv",
         **kwargs
     ):
         super().__init__(**collect_args(locals())) 
@@ -39,7 +39,7 @@ class AudacityParser(TableParser):
         audio_file_path = None,
         detection_type = Detection,
         header = False,
-        file_ext = "txt",
+        table_fnmatch = "*.txt",
         **kwargs
     ):
         super().__init__(**collect_args(locals())) 
@@ -55,7 +55,7 @@ class RavenParser(TableParser):
         tstart = Column("Begin Time (s)", 3),
         tend = Column("End Time (s)", 4),
         label = Column("Annotation", 10),
-        file_ext = "selections.txt",
+        table_fnmatch = "*.selections.txt",
         detection_type = Detection,
         **kwargs
     ):
@@ -70,6 +70,7 @@ class KaleidoscopeParser(TableParser):
         tstart = Column("OFFSET", 3),
         tend = Column("DURATION", 4),
         label = Column("scientific_name", 5),
+        table_fnmatch = "*.csv",
         detection_type = DurDetection,
         **kwargs
     ):
@@ -84,7 +85,7 @@ class KaleidoscopeParser(TableParser):
         ],
         self.all_columns += self.audio_file_path
     
-    def get_audio_files_paths(self, table_path, *args, **kwargs):
+    def get_audio_files(self, table_path, *args, **kwargs):
         with open(table_path) as fp:
             csvr = csv.reader(fp, delimiter=self.delimiter)
             if self.header:
@@ -96,7 +97,19 @@ class KaleidoscopeParser(TableParser):
                     self.all_audio_files[audio_file_path] = AudioFile(audio_file_path)
                 yield self.all_audio_files[audio_file_path]
 
-        
+
+class BirdNetParser(TableParser):
+    def __init__(self, 
+        names = ["birdnet", "bn"],
+        delimiter = ",",
+        tstart = Column("start_time ", 3),
+        tend = Column("end_time", 4),
+        label = Column("label", 6),
+        table_fnmatch = "*.csv",
+        detection_type = Detection,
+        **kwargs
+    ):
+        super().__init__(**collect_args(locals())) 
 
 
 available_parsers = [
