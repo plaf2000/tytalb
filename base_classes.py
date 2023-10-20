@@ -44,9 +44,9 @@ class Detection:
     tend: TimeUnit
     label: str
 
-    def __init__(self, tstart, tend, label):
-        self.tstart = TimeUnit(float(tstart))
-        self.tend = TimeUnit(float(tend))
+    def __init__(self, tstart_s: float, tend_s: float, label):
+        self.tstart = TimeUnit(float(tstart_s))
+        self.tend = TimeUnit(float(tend_s))
         self.label = label    
         
 
@@ -56,17 +56,16 @@ class DurDetection(Detection):
 
 class AudioFile:
     audio_segment: AudioSegment = None
-    exported_intervals: list[list]
     exported_mask: np.ndarray
     
-    def __init__(self, path):
+    def __init__(self, path: str):
         self.path = path
         self.basename = os.path.basename(path).split(".")[0]
 
     def load(self):
         if self.audio_segment is None:
             self.audio_segment: AudioSegment = AudioSegment.from_file(self.path)
-            self.exported_mask = np.zeros(int(ceil(self.audio_segment.duration_seconds)), dtype=np.bool_)
+            self.exported_mask = np.zeros(ceil(self.audio_segment.duration_seconds), dtype=np.bool_)
         
     def export_segment(
             self,
@@ -104,7 +103,16 @@ class AudioFile:
             self.exported_mask[int(tstart.s):int(ceil(tend.s))] = True
 
 
-    def export_for_birdnet(self, detection: Detection, base_path: str, audio_format: str = "flac", overlap_s: float = 0, overlap_perc: float=0, **kwargs):
+    def export_for_birdnet(self, 
+            detection: Detection, 
+            base_path: str, 
+            audio_format: str = "flac", 
+            overlap_s: float = 0, 
+            overlap_perc: float=0, 
+            pad_to_birnet_duration: bool = True, 
+            **kwargs
+        ):
+
         dir_path: str = os.path.join(base_path, detection.label)
         os.makedirs(dir_path, exist_ok=True)
 
@@ -116,7 +124,13 @@ class AudioFile:
         overlap = TimeUnit(overlap_s)
         overlap = max(TimeUnit(0),min(overlap, BIRDNET_AUDIO_DURATION - TimeUnit(ms=1)))
 
-        if tend - tstart <= BIRDNET_AUDIO_DURATION:
+        dur = tend - tstart
+
+        if  dur <= BIRDNET_AUDIO_DURATION:
+            if pad_to_birnet_duration:
+                pad = (BIRDNET_AUDIO_DURATION - dur) / 2
+                tstart -= pad
+                tend += pad
             self.export_segment(tstart, tend, dir_path, audio_format, **kwargs)
             return
         
@@ -128,12 +142,16 @@ class AudioFile:
             tstart = tend - overlap
             start = False
 
-    def export_noise_birdnet(self, base_path: str, audio_format: str = "flac", export_prob = None, export_perc = .1, **kwargs):
+    def export_noise_birdnet(self, base_path: str, audio_format: str = "flac", export_prob: float = None, export_perc: float = .1, **kwargs):
         not_exp = ~self.exported_mask
         diff = np.diff(not_exp.astype(np.int8), prepend=0, append=0)
+        noise_ratio = np.sum(not_exp) / len(not_exp)
+        if noise_ratio == 0:
+            return
         if export_prob is None:
-            noise_ratio = np.sum(not_exp) / len(not_exp)
-            export_prob = export_perc # TODO: Change this
+            export_perc = max(min(1, export_perc), 0)
+            print(noise_ratio)
+            export_prob = min(1, export_perc / noise_ratio)
         tstarts = np.flatnonzero(diff == 1)
         tends = np.flatnonzero(diff == -1)
         random.seed(self.basename)
@@ -145,14 +163,13 @@ class AudioFile:
         for ts, te in zip(tstarts, tends):
             n_splits  = int((te-ts) / BIRDNET_AUDIO_DURATION.s)
             indexes = np.arange(n_splits) 
-            k = int(round(n_splits * export_perc))
+            k = int(round(n_splits * export_prob))
             indexes_to_export = random.choices(indexes, k = k)
             for i in indexes_to_export:
                 tstart = TimeUnit(s=ts) + i * BIRDNET_AUDIO_DURATION
                 tend = tstart + BIRDNET_AUDIO_DURATION
                 self.export_segment(tstart, tend, dir_path, audio_format, mark=False, **kwargs)
-            
-
+        
 
 @dataclass
 class Column:
@@ -191,7 +208,7 @@ class TableParser:
             *[col.get_val(row) for col in self.all_columns]
         )
 
-    def get_detections(self, table_path: str) -> Generator[Detection, None, None]:
+    def get_detections(self, table_path: str, *args, **kwargs) -> Generator[Detection, None, None]:
         with open(table_path) as fp:
             csvr = csv.reader(fp, delimiter=self.delimiter)
             if self.header:

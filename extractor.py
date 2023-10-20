@@ -2,6 +2,7 @@ from parsers import available_parsers
 from base_classes import TableParser, AudioFile
 import numpy as np
 import fnmatch
+import time
 import os
 
 
@@ -67,6 +68,9 @@ class BirdNetExtractor:
 
 
 if __name__ == "__main__":
+
+    ts = time.time()
+
     extr = BirdNetExtractor(
         "raven",
         "C:\\Users\\plaf\\Documents\\raven",
@@ -76,7 +80,10 @@ if __name__ == "__main__":
     extr.extract_for_training(
         audio_files_dir="C:\\Users\\plaf\\Music",
         audio_file_ext="wav",
-        export_dir="C:\\Users\\plaf\\Documents\\raven\\out"
+        export_dir="C:\\Users\\plaf\\Documents\\raven\\out",
+        audio_format="flac",
     )
+
+    print(time.time() - ts)
     
 
