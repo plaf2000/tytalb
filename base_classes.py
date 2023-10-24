@@ -221,6 +221,7 @@ class AudioFile:
         with tempfile.TemporaryDirectory() as tmpdirname:
             tmppath = lambda fname: os.path.join(tmpdirname, fname)
             listpath = tmppath(f"{self.basename}.csv")
+            basename = tmppath(f"{self.basename}%04d.{audio_format}")
 
             subprocess.run(
                 args=[
@@ -235,7 +236,7 @@ class AudioFile:
                     listpath,
                     "-segment_list_entry_prefix",
                     tmpdirname,
-                    tmppath(tmpdirname)
+                    tmppath(basename)
                 ]
             )
 
@@ -243,6 +244,7 @@ class AudioFile:
             
             with open(listpath) as fp:
                 csv_reader = csv.reader(fp)
+
                 for row in csv_reader:
                     tstart_f = TimeUnit(s=row[1])
                     tend_f = TimeUnit(s=row[2])
@@ -271,12 +273,25 @@ class AudioFile:
                             )
                         
                         else:
-                            tt = det.tstart - tstart_f
+                            ss = det.tstart - tstart_f
                             start = True
-                            while start or tt < tend_f:
-                                tend = tstart + BIRDNET_AUDIO_DURATION
-                                tstart = tend - overlap
+                            while start or ss < tend_f:
+                                to = ss + BIRDNET_AUDIO_DURATION
+                                ss = to - overlap
                                 start = False
+                                sub_det = Detection(ss + tstart_f, to + tstart_f, det.label)
+                                subprocess.run(
+                                    args = [
+                                        "ffmpeg",
+                                        "-i",
+                                        self.path,
+                                        "-ss",
+                                        str(ss.s),
+                                        "-to",
+                                        str(to.s),
+                                        self.detection_path(base_path, sub_det, audio_format)
+                                    ]
+                                )
                         noise = False
                         
 
@@ -286,6 +301,8 @@ class AudioFile:
                         basepath_noise = os.path.join(base_path, "Noise")
                         os.makedirs(basepath_noise, exist_ok=True)
                         basepath_out = os.path.join(basepath_noise, ".".join(basename_noise_split[:-1]))
+
+                        fout_name = f"{basepath_out}\%04d.{audio_format}"
 
                         subprocess.run(
                             args=[
@@ -299,10 +316,10 @@ class AudioFile:
                                 "-segment_list",                    
                                 listpath,
                                 "-segment_list_entry_prefix",
-                                tmpdirname,
-                                f"{basepath_out}\%04d.{audio_format}"
+                                fout_name,                                
                             ]
                         )
+
 
                     
 
