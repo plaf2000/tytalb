@@ -77,6 +77,8 @@ class Detection:
         return self.centered_pad((duration - self.dur)/2)
 
     def birdnet_pad(self):
+        if self.dur > BIRDNET_AUDIO_DURATION:
+            return self
         return self.centered_pad_to(BIRDNET_AUDIO_DURATION)
     
     
@@ -214,14 +216,14 @@ class AudioFile:
         not_exp = ~self.exported_mask
         diff = np.diff(not_exp.astype(np.int8), prepend=0, append=0)
 
-        tstamps = np.flatnonzero(np.abs(diff) == 1)
+        tstamps = np.flatnonzero(np.abs(diff) == 1) # TODO: Check offset +- 1 
         tstamps_cmd = np.array2string(tstamps, prefix="", suffix="", separator=",")
 
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             tmppath = lambda fname: os.path.join(tmpdirname, fname)
             listpath = tmppath(f"{self.basename}.csv")
-            basename = tmppath(f"{self.basename}%04d.{audio_format}")
+            segment_path = tmppath(f"{self.basename}%04d.{audio_format}")
 
             subprocess.run(
                 args=[
@@ -236,7 +238,7 @@ class AudioFile:
                     listpath,
                     "-segment_list_entry_prefix",
                     tmpdirname,
-                    tmppath(basename)
+                    segment_path
                 ]
             )
 
@@ -284,7 +286,7 @@ class AudioFile:
                                     args = [
                                         "ffmpeg",
                                         "-i",
-                                        self.path,
+                                        fpath,
                                         "-ss",
                                         str(ss.s),
                                         "-to",
@@ -302,7 +304,7 @@ class AudioFile:
                         os.makedirs(basepath_noise, exist_ok=True)
                         basepath_out = os.path.join(basepath_noise, ".".join(basename_noise_split[:-1]))
 
-                        fout_name = f"{basepath_out}\%04d.{audio_format}"
+                        fout_name = f"{basepath_out}%04d.{audio_format}"
 
                         subprocess.run(
                             args=[
