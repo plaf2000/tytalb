@@ -5,6 +5,7 @@ from math import ceil
 from typing import Generator
 import random
 import numpy as np
+import subprocess
 
 import os
 import csv
@@ -98,7 +99,21 @@ class AudioFile:
             tags = mediainfo(self.path)['TAG']
         out_name = f"{self.basename}_{tstart.s:06.0f}_{tend.s:06.0f}.{audio_format}"
         out_path = os.path.join(dir_path, out_name)
-        self.audio_segment[int(tstart.ms):int(tend.ms)].export(out_path, tags=tags)
+        # self.audio_segment[int(tstart.ms):int(tend.ms)].export(out_path, tags=tags)
+        subprocess.Popen(
+            [
+                "ffmpeg",
+                "-i",
+                self.path,
+                "-ss",
+                str(tstart.s),
+                "-to",
+                str(tend.s),
+                out_path,
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL 
+        )
         if mark_exported:
             self.exported_mask[int(tstart.s):int(ceil(tend.s))] = True
 
@@ -154,6 +169,7 @@ class AudioFile:
             export_prob = min(1, export_perc / noise_ratio)
         tstarts = np.flatnonzero(diff == 1)
         tends = np.flatnonzero(diff == -1)
+        
         random.seed(self.basename)
 
         dir_path: str = os.path.join(base_path, "Noise")
