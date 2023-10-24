@@ -84,8 +84,8 @@ class Detection:
     
 
 class DurDetection(Detection):
-    def __init__(self, tstart, dur, label, audio_file):
-        super().__init__(tstart, tstart+dur, label, audio_file)    
+    def __init__(self, tstart, dur, label):
+        super().__init__(tstart, tstart+dur, label)    
 
 class AudioFile:
     audio_segment: AudioSegment = None
@@ -112,7 +112,7 @@ class AudioFile:
     
         if self.date_time is not None:
             date = self.date_time + timedelta(seconds = detection.tstart.s)
-            name = f"{self.prefix}{date.strftime(self.date_format)}{self.suffix}.{audio_format}"
+            name = f"{self.prefix}{date.strftime(self.date_format)}_{detection.dur.s:05.0f}{self.suffix}.{audio_format}"
         else:
             name = f"{self.basename}_{detection.tstart.s:06.0f}_{detection.tend.s:06.0f}.{audio_format}"
         
@@ -167,8 +167,6 @@ class AudioFile:
                 str(tend.s),
                 out_path,
             ],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL 
         )
         if mark_exported:
             self.exported_mask[int(tstart.s):int(ceil(tend.s))] = True
@@ -254,12 +252,16 @@ class AudioFile:
         self.exported_mask = np.zeros(max_tend + 1, np.bool_)
 
         for det in detections:
-            self.exported_mask[int(det.tstart.s):int(ceil(det.tend.s))] = True
+            start = int(det.tstart.s)
+            end = int(ceil(det.tend.s))
+            self.exported_mask[start:end] = True
         not_exp = ~self.exported_mask
-        diff = np.diff(not_exp.astype(np.int8), prepend=0, append=0)
 
-        tstamps = np.flatnonzero(np.abs(diff) == 1) # TODO: Check offset +- 1 
-        tstamps_cmd = ",".join([str(t) for t in tstamps])
+        print(not_exp[3470:3500])
+        diff = np.diff(not_exp.astype(np.int8), prepend=1, append=1)
+
+        tstamps = np.flatnonzero(np.abs(diff) == 1)
+        tstamps_cmd = ",".join(tstamps.astype(str))
         print(tstamps_cmd)
 
 
@@ -307,11 +309,12 @@ class AudioFile:
 
 
                     noise = True
-                    while det and det.tstart < tend_f:
+                    while det and det.tend < tend_f:
                         ss = det.tstart - tstart_f
+                        to = det.tend - tstart_f
+
+                        
                         if det.dur.s <= BIRDNET_AUDIO_DURATION:
-                            to = det.tend - tstart_f
-                            print(ss, to, tstart_f, tend_f)
 
                             subprocess.run(
                                 args = [
@@ -333,9 +336,11 @@ class AudioFile:
                             if det.dur > length_threshold:
                                 # If the detection is very long (above length_threshold), use the faster segment ffmpeg command
                                 # In this case we won't have any overlap
-                                to = det.tend - tstart_f
+
                                 splits = self.detection_path(base_path, det, audio_format).split(".")
-                                fout_name = ".".join(splits[:-1]) + f"_%04d.{splits[-1]}"
+                                base_out_path = ".".join(splits[:-1])
+
+                                fout_name = f"{base_out_path}_%04d.{splits[-1]}"
                                 subprocess.run(
                                     args=[
                                         "ffmpeg",
@@ -343,21 +348,72 @@ class AudioFile:
                                         "error",
                                         "-i",
                                         fpath,
+                                        "-ss",
+                                        str(ss.s),
+                                        "-to",
+                                        str(to.s),
                                         "-f",
                                         "segment",
                                         "-segment_time",
                                         str(BIRDNET_AUDIO_DURATION.s),
+                                        # "-reset_timestamps",
+                                        # "1",
                                         fout_name,
-                                        "-y"                    
+                                        "-y"                 
+                                    ]
+                                )
+                                fout_name = lambda i: f"{base_out_path}_{i:04d}.{splits[-1]}"
+                                def new_fout_name(tstart_seg: TimeUnit, tend_seg: TimeUnit):
+                                    sub_det = Detection(tstart_seg, tend_seg, det.label)
+                                    return self.detection_path(base_path, sub_det, audio_format)
+                                i = 0
+
+                                while os.path.isfile(fout_name(i)):
+                                    tstart_seg = i * BIRDNET_AUDIO_DURATION + det.tstart
+                                    tend_seg = tstart_seg + BIRDNET_AUDIO_DURATION
+                                    if  tend_seg > det.tend:
+                                        # Remove segment at the end that is shorter than birdnet duration
+                                        os.remove(fout_name(i))
+                                        break
+                                    os.replace(fout_name(i), new_fout_name(tstart_seg, tend_seg))
+                                    i+=1
+
+                                # Export last portion
+
+                                to = det.tend - tstart_f
+                                ss = to - BIRDNET_AUDIO_DURATION
+                                subprocess.run(
+                                    args = [
+                                        "ffmpeg",
+                                        "-loglevel",
+                                        "error",
+                                        "-i",
+                                        fpath,
+                                        "-ss",
+                                        str(ss.s),
+                                        "-to",
+                                        str(to.s),
+                                        new_fout_name(ss + tstart_f, to + tstart_f),
+                                        "-y"
                                     ]
                                 )
 
                             else:
                                 start = True
-                                while start or ss < tend_f:
-                                    to = ss + BIRDNET_AUDIO_DURATION
+                                last = False
+                                while start or ss < to:
+                                    to_ = ss + BIRDNET_AUDIO_DURATION
+                                    if to_ > to:
+                                        # If it is after the end of the detection, move the start back
+                                        # so that the segment has the birdnet duration and terminates 
+                                        # at the end of the detection. Set the last flag to true, since
+                                        # moving forward doesn't make any sense (all detection is covered).
+
+                                        ss -= to_ - to
+                                        to_ = to
+                                        last = True
                                     start = False
-                                    sub_det = Detection(ss + tstart_f, to + tstart_f, det.label)
+                                    sub_det = Detection(ss + tstart_f, to_ + tstart_f, det.label)
                                     subprocess.run(
                                         args = [
                                             "ffmpeg",
@@ -368,15 +424,14 @@ class AudioFile:
                                             "-ss",
                                             str(ss.s),
                                             "-to",
-                                            str(to.s),
+                                            str(to_.s),
                                             self.detection_path(base_path, sub_det, audio_format),
                                             "-y"
                                         ]
                                     )
-                                    ss = to - overlap
-
-                        print(detections)
-
+                                    ss = to_ - overlap
+                                    if last:
+                                        break
                         if not detections:
                             det = None
                             break
