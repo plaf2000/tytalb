@@ -108,13 +108,13 @@ class AudioFile:
 
     def detection_path(self, base_path: str, detection: Detection, audio_format = "flac") -> str:
         out_path = os.path.join(base_path, detection.label)
-        os.makedirs(out_path)
+        os.makedirs(out_path, exist_ok=True)
     
         if self.date_time is not None:
-            date = self.date_time + timedelta(seconds = detection.dur.s)
+            date = self.date_time + timedelta(seconds = detection.tstart.s)
             name = f"{self.prefix}{date.strftime(self.date_format)}{self.suffix}.{audio_format}"
         else:
-            name = f"{self.basename}.{audio_format}"
+            name = f"{self.basename}_{detection.tstart.s:06.0f}_{detection.tend.s:06.0f}.{audio_format}"
         
         return os.path.join(out_path, name)
 
@@ -242,25 +242,38 @@ class AudioFile:
                 tend = tstart + BIRDNET_AUDIO_DURATION
                 self.export_segment(tstart, tend, dir_path, audio_format, mark=False, **kwargs)
     
-    def export_all_birdnet(self, base_path: str, detections: list[Detection], audio_format: str = "flac", overlap = 0):
+    def export_all_birdnet(self, base_path: str, detections: list[Detection], audio_format: str = "flac", overlap = 0, length_threshold_s=300):
+        length_threshold = TimeUnit(length_threshold_s)
         detections = sorted([d.birdnet_pad() for d in detections], key=lambda det: det.tstart)
+        max_tend = 0
+        for det in detections:
+            as_int = int(ceil(det.tend.s))
+            if  as_int > max_tend:
+                max_tend = as_int
+
+        self.exported_mask = np.zeros(max_tend + 1, np.bool_)
+
         for det in detections:
             self.exported_mask[int(det.tstart.s):int(ceil(det.tend.s))] = True
         not_exp = ~self.exported_mask
         diff = np.diff(not_exp.astype(np.int8), prepend=0, append=0)
 
         tstamps = np.flatnonzero(np.abs(diff) == 1) # TODO: Check offset +- 1 
-        tstamps_cmd = np.array2string(tstamps, prefix="", suffix="", separator=",")
+        tstamps_cmd = ",".join([str(t) for t in tstamps])
+        print(tstamps_cmd)
 
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             tmppath = lambda fname: os.path.join(tmpdirname, fname)
             listpath = tmppath(f"{self.basename}.csv")
+            # listpath = (f"list.csv")
             segment_path = tmppath(f"{self.basename}%04d.{audio_format}")
 
             subprocess.run(
                 args=[
                     "ffmpeg",
+                    "-loglevel",
+                    "error",
                     "-i",
                     self.path,
                     "-f",
@@ -270,7 +283,7 @@ class AudioFile:
                     "-segment_list",                    
                     listpath,
                     "-segment_list_entry_prefix",
-                    tmpdirname,
+                    tmppath(""),
                     segment_path
                 ]
             )
@@ -281,56 +294,95 @@ class AudioFile:
                 csv_reader = csv.reader(fp)
 
                 for row in csv_reader:
-                    tstart_f = TimeUnit(s=row[1])
-                    tend_f = TimeUnit(s=row[2])
+                    tstart_f = TimeUnit(row[1])
+                    tend_f = TimeUnit(row[2])
 
-                    if (tstart_f-tend_f).s < 3:
+
+                    if (tend_f-tstart_f).s < 3:
+
                         continue
 
                     fpath = row[0]
 
+
+
                     noise = True
-                    while det.tstart < tend_f:
+                    while det and det.tstart < tend_f:
+                        ss = det.tstart - tstart_f
                         if det.dur.s <= BIRDNET_AUDIO_DURATION:
-                            ss = det.tstart - tstart_f
                             to = det.tend - tstart_f
+                            print(ss, to, tstart_f, tend_f)
+
                             subprocess.run(
                                 args = [
                                     "ffmpeg",
+                                    "-loglevel",
+                                    "error",
                                     "-i",
                                     fpath,
                                     "-ss",
                                     str(ss.s),
                                     "-to",
                                     str(to.s),
-                                    self.detection_path(base_path, det, audio_format)
+                                    self.detection_path(base_path, det, audio_format),
+                                    "-y"
                                 ]
                             )
                         
                         else:
-                            ss = det.tstart - tstart_f
-                            start = True
-                            while start or ss < tend_f:
-                                to = ss + BIRDNET_AUDIO_DURATION
-                                ss = to - overlap
-                                start = False
-                                sub_det = Detection(ss + tstart_f, to + tstart_f, det.label)
+                            if det.dur > length_threshold:
+                                # If the detection is very long (above length_threshold), use the faster segment ffmpeg command
+                                # In this case we won't have any overlap
+                                to = det.tend - tstart_f
+                                splits = self.detection_path(base_path, det, audio_format).split(".")
+                                fout_name = ".".join(splits[:-1]) + f"_%04d.{splits[-1]}"
                                 subprocess.run(
-                                    args = [
+                                    args=[
                                         "ffmpeg",
+                                        "-loglevel",
+                                        "error",
                                         "-i",
                                         fpath,
-                                        "-ss",
-                                        str(ss.s),
-                                        "-to",
-                                        str(to.s),
-                                        self.detection_path(base_path, sub_det, audio_format)
+                                        "-f",
+                                        "segment",
+                                        "-segment_time",
+                                        str(BIRDNET_AUDIO_DURATION.s),
+                                        fout_name,
+                                        "-y"                    
                                     ]
                                 )
+
+                            else:
+                                start = True
+                                while start or ss < tend_f:
+                                    to = ss + BIRDNET_AUDIO_DURATION
+                                    start = False
+                                    sub_det = Detection(ss + tstart_f, to + tstart_f, det.label)
+                                    subprocess.run(
+                                        args = [
+                                            "ffmpeg",
+                                            "-loglevel",
+                                            "error",
+                                            "-i",
+                                            fpath,
+                                            "-ss",
+                                            str(ss.s),
+                                            "-to",
+                                            str(to.s),
+                                            self.detection_path(base_path, sub_det, audio_format),
+                                            "-y"
+                                        ]
+                                    )
+                                    ss = to - overlap
+
+                        print(detections)
+
+                        if not detections:
+                            det = None
+                            break
+                        det = detections.pop(0)
                         noise = False
                         
-
-
                     if noise:
                         basename_noise_split = os.path.basename(fpath).split(".")
                         basepath_noise = os.path.join(base_path, "Noise")
@@ -342,16 +394,16 @@ class AudioFile:
                         subprocess.run(
                             args=[
                                 "ffmpeg",
+                                "-loglevel",
+                                "error",
                                 "-i",
                                 fpath,
                                 "-f",
                                 "segment",
                                 "-segment_time",
                                 str(BIRDNET_AUDIO_DURATION.s),
-                                "-segment_list",                    
-                                listpath,
-                                "-segment_list_entry_prefix",
-                                fout_name,                                
+                                fout_name,
+                                "-y"                    
                             ]
                         )
 

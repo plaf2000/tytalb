@@ -63,6 +63,19 @@ class BirdNetExtractor:
         self.extract_all_detections(audio_files_dir, audio_file_ext, export_dir, **kwargs)
         self.extract_noise_all_files(export_dir, **kwargs)
 
+    def extract_for_training_efficient(self, audio_files_dir: str, audio_file_ext: str, export_dir: str, **kwargs):
+        self.map_audiofile_detections: dict[AudioFile, list] = {}
+        for table_path in self.tables_paths:
+            detections = self.parser.get_detections(table_path, **kwargs)
+            audiofiles = self.parser.get_audio_files(table_path, audio_files_dir, audio_file_ext)
+
+            for det, af in zip(detections, audiofiles):
+                self.map_audiofile_detections.setdefault(af, []).append(det)
+
+            
+            for af, dets in self.map_audiofile_detections.items():
+                af.export_all_birdnet(export_dir, dets, **kwargs)
+
 
 
 
@@ -77,7 +90,7 @@ if __name__ == "__main__":
         False
     )
 
-    extr.extract_for_training(
+    extr.extract_for_training_efficient(
         audio_files_dir="C:\\Users\\plaf\\Music",
         audio_file_ext="wav",
         export_dir="C:\\Users\\plaf\\Documents\\raven\\out",
