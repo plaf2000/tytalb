@@ -1,4 +1,4 @@
-from base_classes import TableParser, Column, DurDetection, Detection, AudioFile
+from base_classes import TableParser, Column, DurSegment, Segment, AudioFile
 from inspect import signature
 import csv
 import os 
@@ -36,7 +36,7 @@ class SonicParser(TableParser):
         tstart = Column("START", 0),
         tend = Column("END", 1),
         label = Column("LABEL", 4),
-        detection_type = Detection,
+        segment_type = Segment,
         audio_file_path = None,
         header = False,
         table_fnmatch = "*.csv",
@@ -53,7 +53,7 @@ class AudacityParser(TableParser):
         tend = Column(colindex=1),
         label = Column(colindex=2),
         audio_file_path = None,
-        detection_type = Detection,
+        segment_type = Segment,
         header = False,
         table_fnmatch = "*.txt",
         **kwargs
@@ -72,7 +72,7 @@ class RavenParser(TableParser):
         tend = Column("End Time (s)", 4),
         label = Column("Annotation", 10),
         table_fnmatch = "*.selections.txt",
-        detection_type = Detection,
+        segment_type = Segment,
         **kwargs
     ):
         super().__init__(**collect_args(locals())) 
@@ -87,7 +87,7 @@ class KaleidoscopeParser(TableParser):
         tend = Column("DURATION", 4),
         label = Column("scientific_name", 5),
         table_fnmatch = "*.csv",
-        detection_type = DurDetection,
+        segment_type = DurSegment,
         **kwargs
     ):
         super().__init__(**collect_args(locals()))
@@ -117,11 +117,11 @@ class BirdNetParser(TableParser):
     def __init__(self, 
         names = ["birdnet", "bn"],
         delimiter = ",",
-        tstart = Column("start_time ", 3),
+        tstart = Column("start_time", 3),
         tend = Column("end_time", 4),
         label = Column("label", 6),
         table_fnmatch = "*.csv",
-        detection_type = Detection,
+        segment_type = Segment,
         **kwargs
     ):
         super().__init__(**collect_args(locals())) 

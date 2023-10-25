@@ -41,17 +41,17 @@ class BirdNetExtractor:
                     self.tables_paths.append(fpath)
         
 
-    def extract_detections_from_table(self, table_path: str, audio_files_dir: str, audio_file_ext: str, export_dir: str, **kwargs):
-        detections = self.parser.get_detections(table_path, **kwargs)
+    def extract_segments_from_table(self, table_path: str, audio_files_dir: str, audio_file_ext: str, export_dir: str, **kwargs):
+        segments = self.parser.get_segments(table_path, **kwargs)
         audiofiles = self.parser.get_audio_files(table_path, audio_files_dir, audio_file_ext)
 
-        for det, af in zip(detections, audiofiles):
+        for det, af in zip(segments, audiofiles):
             af.export_for_birdnet(det, export_dir, **kwargs)
 
 
-    def extract_all_detections(self, audio_files_dir: str, audio_file_ext: str, export_dir: str,  **kwargs):
+    def extract_all_segments(self, audio_files_dir: str, audio_file_ext: str, export_dir: str,  **kwargs):
         for tp in self.tables_paths:
-            self.extract_detections_from_table(tp, audio_files_dir, audio_file_ext, export_dir, **kwargs)
+            self.extract_segments_from_table(tp, audio_files_dir, audio_file_ext, export_dir, **kwargs)
 
 
     def extract_noise_all_files(self, export_dir: str, **kwargs):
@@ -60,23 +60,24 @@ class BirdNetExtractor:
 
 
     def extract_for_training(self, audio_files_dir: str, audio_file_ext: str, export_dir: str,  **kwargs):
-        self.extract_all_detections(audio_files_dir, audio_file_ext, export_dir, **kwargs)
+        self.extract_all_segments(audio_files_dir, audio_file_ext, export_dir, **kwargs)
         self.extract_noise_all_files(export_dir, **kwargs)
 
     def extract_for_training_efficient(self, audio_files_dir: str, audio_file_ext: str, export_dir: str, **kwargs):
-        self.map_audiofile_detections: dict[AudioFile, list] = {}
-        detections = []
+        self.map_audiofile_segments: dict[AudioFile, list] = {}
+        segments = []
         audiofiles = []
         for table_path in self.tables_paths:
-            detections += self.parser.get_detections(table_path, **kwargs)
+            segments += self.parser.get_segments(table_path, **kwargs)
             audiofiles += self.parser.get_audio_files(table_path, audio_files_dir, audio_file_ext)
 
-        for det, af in zip(detections, audiofiles):
-            self.map_audiofile_detections.setdefault(af, []).append(det)
+        for det, af in zip(segments, audiofiles):
+            self.map_audiofile_segments.setdefault(af, []).append(det)
 
-        
-        for af, dets in self.map_audiofile_detections.items():
-            af.export_all_birdnet(export_dir, dets, **kwargs)
+        with open("success.log", "w") as logfile_success:
+            with open("test_err.log", "w") as logfile_errors:
+                for af, dets in self.map_audiofile_segments.items():
+                        af.export_all_birdnet(export_dir, dets,logfile_success=logfile_success, logfile_err=logfile_errors, **kwargs)
 
 
 
