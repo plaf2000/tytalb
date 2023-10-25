@@ -3,6 +3,22 @@ from inspect import signature
 import csv
 import os 
 
+"""
+Custom parser to parse the table-formatted text files.
+Use `Column` to define the index of the location (starting
+ from 0) where the attribute can be retrieved.
+
+If the tables have an header, set the class' attribute
+to true and define the name of the column in the header.
+
+The attribute `names` is used to identify the parser, 
+make sure that there are no overlaps between different parser
+in the `available_parser` list.
+
+
+
+"""
+
 
 def collect_args(all_locs: dict):
     args = [arg for arg in signature(TableParser.__init__).parameters]
@@ -33,9 +49,9 @@ class AudacityParser(TableParser):
     def __init__(self, 
         names = ["sonic-visualizer", "sonic-visualiser", "sv"],
         delimiter = "\t",
-        tstart = Column(None, 0),
-        tend = Column(None, 1),
-        label = Column(None, 2),
+        tstart = Column(colindex=0),
+        tend = Column(colindex=1),
+        label = Column(colindex=2),
         audio_file_path = None,
         detection_type = Detection,
         header = False,

@@ -37,7 +37,7 @@ class BirdNetExtractor:
         else:
             for f in os.listdir(self.tables_dir):
                 fpath = os.path.join(self.tables_dir, f)
-                if os.path.isfile(fpath) and fnmatch.fnmatch(fpath, self.parser.table_fnmatch):
+                if os.path.isfile(fpath) and self.parser.is_table(fpath):
                     self.tables_paths.append(fpath)
         
 
@@ -65,16 +65,18 @@ class BirdNetExtractor:
 
     def extract_for_training_efficient(self, audio_files_dir: str, audio_file_ext: str, export_dir: str, **kwargs):
         self.map_audiofile_detections: dict[AudioFile, list] = {}
+        detections = []
+        audiofiles = []
         for table_path in self.tables_paths:
-            detections = self.parser.get_detections(table_path, **kwargs)
-            audiofiles = self.parser.get_audio_files(table_path, audio_files_dir, audio_file_ext)
+            detections += self.parser.get_detections(table_path, **kwargs)
+            audiofiles += self.parser.get_audio_files(table_path, audio_files_dir, audio_file_ext)
 
-            for det, af in zip(detections, audiofiles):
-                self.map_audiofile_detections.setdefault(af, []).append(det)
+        for det, af in zip(detections, audiofiles):
+            self.map_audiofile_detections.setdefault(af, []).append(det)
 
-            
-            for af, dets in self.map_audiofile_detections.items():
-                af.export_all_birdnet(export_dir, dets, **kwargs)
+        
+        for af, dets in self.map_audiofile_detections.items():
+            af.export_all_birdnet(export_dir, dets, **kwargs)
 
 
 
