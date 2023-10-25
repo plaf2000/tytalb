@@ -1,5 +1,5 @@
 from parsers import available_parsers
-from base_classes import TableParser, AudioFile
+from base_classes import TableParser, AudioFile, Logger
 import numpy as np
 import fnmatch
 import time
@@ -77,7 +77,7 @@ class BirdNetExtractor:
         with open("success.log", "w") as logfile_success:
             with open("test_err.log", "w") as logfile_errors:
                 for af, dets in self.map_audiofile_segments.items():
-                        af.export_all_birdnet(export_dir, dets,logfile_success=logfile_success, logfile_err=logfile_errors, **kwargs)
+                        af.export_all_birdnet(export_dir, dets, logger=Logger(logfile_success=logfile_success, logfile_errors=logfile_errors), **kwargs)
 
 
 
