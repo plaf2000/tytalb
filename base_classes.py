@@ -116,36 +116,44 @@ class AudioFile:
             name = f"{self.prefix}{date.strftime(self.date_format)}_{detection.dur.s:05.0f}{self.suffix}.{audio_format}"
         else:
             name = f"{self.basename}_{detection.tstart.s:06.0f}_{detection.tend.s:06.0f}.{audio_format}"
-        
         return os.path.join(out_path, name)
 
-
-    def load(self):
-        if self.audio_segment is None:
-            self.audio_segment: AudioSegment = AudioSegment.from_file(self.path)
-            self.exported_mask = np.zeros(ceil(self.audio_segment.duration_seconds), dtype=np.bool_)
-
     @staticmethod
-    def export_segment_ffmpeg(path: str, out_path: str, ss: TimeUnit = None, to: TimeUnit = None, ss_s: float = None, to_s: float = None, overwrite = True, **kwargs):
+    def export_segment_ffmpeg(
+            path: str,
+            out_path: str,
+            ss: TimeUnit = None,
+            to: TimeUnit = None,
+            ss_s: float = None,
+            to_s: float = None,
+            overwrite = True, **kwargs
+        ) -> subprocess.CompletedProcess:
+
+
+        args = ["ffmpeg", "-i", path, "-loglevel", "error"]
         if ss_s is not None:
             ss = TimeUnit(ss_s)
+        if ss is not None:
+            args += ["-ss", str(ss.s)]
         if to_s is not None:
             to = TimeUnit(to_s)
-        
-        args = ["ffmpeg", "-i", path, "-loglevel", "error", "-ss", str(ss.s), "-to", str(to.s), out_path]
+        if to is not None:
+            args += ["-to", str(to.s)]
+
+        args.append(out_path)
 
         if overwrite:
             args.append("-y")
         else: 
             args.append("-n")
 
-        subprocess.run(args)
+        return subprocess.run(args)
 
     @staticmethod
     def export_segments_ffmpeg(
             path: str,
             out_path: str,
-            durations: float | list[float],
+            times: float | list[float],
             ss: TimeUnit=None,
             to: TimeUnit=None,
             ss_s: float=None,
@@ -154,7 +162,7 @@ class AudioFile:
             segment_list_prefix: str = None,
             overwrite: bool =True,
             **kwargs
-        ):
+        ) -> subprocess.CompletedProcess:
 
         if ss_s is not None:
             ss = TimeUnit(ss_s)
@@ -165,137 +173,56 @@ class AudioFile:
 
         if ss is not None:
             args+=["-ss", str(ss.s)]
-
         if to is not None:
             args+=["-to", str(to.s)]
 
         args += ["-f", "segment"]
 
-        if isinstance(durations, list) or isinstance(durations, np.ndarray):
-            args += ["-segment_times", ",".join([str(t) for t in durations])]
+        if isinstance(times, list) or isinstance(times, np.ndarray):
+            args += ["-segment_times", ",".join([str(t) for t in times])]
         else:
-            args += ["-segment_time", str(durations)]
+            args += ["-segment_time", str(times)]
         
         if segment_list is not None:
             args += ["-segment_list", segment_list]
-        
         if segment_list_prefix is not None:
             args += ["-segment_list_entry_prefix", segment_list_prefix]
 
-        
         args.append(out_path)
-
 
         if overwrite:
             args.append("-y")
         else: 
             args.append("-n")
 
-        subprocess.run(args)
-        
-    def export_segment(
-            self,
-            tstart: TimeUnit,
-            tend: TimeUnit,
-            dir_path: str,
-            audio_format: str,
-            mark_exported: bool = True,
-            export_metadata: bool = True,
-            tstart_s = None,
-            tend_s = None,
-            tstart_ms = None,
-            tend_ms = None,
-            **kwargs
-        ):
-
-        if tstart_s is not None:
-            tstart = TimeUnit(tstart_s)
-        if tstart_ms is not None:
-            tstart = TimeUnit(ms = tstart_ms)
-
-        if tend_s is not None:
-            tend = TimeUnit(tend_s)
-        if tend_ms is not None:
-            tend = TimeUnit(ms = tend_ms)
-
-        self.load()
-        tags = None
-        if export_metadata:
-            tags = mediainfo(self.path)['TAG']
-        out_name = f"{self.basename}_{tstart.s:06.0f}_{tend.s:06.0f}.{audio_format}"
-        out_path = os.path.join(dir_path, out_name)
-        if mark_exported:
-            self.exported_mask[int(tstart.s):int(ceil(tend.s))] = True
+        return subprocess.run(args)
 
 
-    def export_for_birdnet(self, 
-            detection: Detection, 
-            base_path: str, 
-            audio_format: str = "flac", 
-            overlap_s: float = 0, 
-            overlap_perc: float=0, 
-            pad_to_birnet_duration: bool = True, 
-            **kwargs
-        ):
-
-        dir_path: str = os.path.join(base_path, detection.label)
-        os.makedirs(dir_path, exist_ok=True)
-
-        tstart, tend = detection.tstart, detection.tend
-
-        if overlap_perc > 0:
-            overlap_s: float = BIRDNET_AUDIO_DURATION.s * overlap_perc
-        
-        overlap = TimeUnit(overlap_s)
-        overlap = max(TimeUnit(0),min(overlap, BIRDNET_AUDIO_DURATION - TimeUnit(ms=1)))
-
-        dur = tend - tstart
-
-        if  dur <= BIRDNET_AUDIO_DURATION:
-            if pad_to_birnet_duration:
-                pad = (BIRDNET_AUDIO_DURATION - dur) / 2
-                tstart -= pad
-                tend += pad
-            self.export_segment(tstart, tend, dir_path, audio_format, **kwargs)
-            return
-        
-        tend_orig = tend
-        start = True
-        while start or tend < tend_orig:
-            tend = tstart + BIRDNET_AUDIO_DURATION
-            self.export_segment(tstart, min(tend_orig, tend), dir_path, audio_format, **kwargs)
-            tstart = tend - overlap
-            start = False
-
-    def export_noise_birdnet(self, base_path: str, audio_format: str = "flac", export_prob: float = None, export_perc: float = .1, **kwargs):
-        not_exp = ~self.exported_mask
-        diff = np.diff(not_exp.astype(np.int8), prepend=0, append=0)
-        noise_ratio = np.sum(not_exp) / len(not_exp)
-        if noise_ratio == 0:
-            return
-        if export_prob is None:
-            export_perc = max(min(1, export_perc), 0)
-            export_prob = min(1, export_perc / noise_ratio)
-        tstarts = np.flatnonzero(diff == 1)
-        tends = np.flatnonzero(diff == -1)
-        
-        random.seed(self.basename)
-
-        dir_path: str = os.path.join(base_path, "Noise")
-        os.makedirs(dir_path, exist_ok=True)
-        for ts, te in zip(tstarts, tends):
-            n_splits  = int((te-ts) / BIRDNET_AUDIO_DURATION.s)
-            indexes = np.arange(n_splits) 
-            k = int(round(n_splits * export_prob))
-            indexes_to_export = random.choices(indexes, k = k)
-            for i in indexes_to_export:
-                tstart = TimeUnit(s=ts) + i * BIRDNET_AUDIO_DURATION
-                tend = tstart + BIRDNET_AUDIO_DURATION
-                self.export_segment(tstart, tend, dir_path, audio_format, mark=False, **kwargs)
     
-    def export_all_birdnet(self, base_path: str, detections: list[Detection], audio_format: str = "flac", overlap_s: float = 0, length_threshold_s=300, **kwargs):
+    def export_all_birdnet(
+            self,
+            base_path: str,
+            detections: list[Detection],
+            audio_format: str = "flac",
+            overlap_s: float = 0, length_threshold_s=100 * BIRDNET_AUDIO_DURATION.s, **kwargs):
         """
-        
+        Export every detection to the corresponding folder in the `base_path` directory, each with the length defined 
+        by the variable `BIRDNET_AUDIO_DURATION`.
+
+        Parameters:
+            - `base_path` (`str`): The base path where the exported audio clips will be saved.
+            - `detections` (`list[Detection]`): A list of sound detections to export audio clips for.
+            - `audio_format` (`str`, optional): The desired audio format for exported clips, as extension (default is "flac").
+            - `overlap_s` (`float`, optional): The amount of overlap between segments in seconds for detecitons longer than `BIRDNET_AUDIO_DURATION` (default is 0).
+            - `length_threshold_s` (`int`, optional): Length threshold in seconds above which the algorithm will start splitting 
+              the long detections using the faster ffmpeg segment command, without overlap (default is 300).
+            - `**kwargs`: Additional keyword arguments for customization.
+
+        Example Usage:
+        ```
+        birdnet_instance.export_all_birdnet("./your/output/directory", detections, audio_format="wav", overlap_s=1)
+        ```    
+
         """
         length_threshold = TimeUnit(length_threshold_s)
         detections = sorted([d.birdnet_pad() for d in detections], key=lambda det: det.tstart)
@@ -332,7 +259,7 @@ class AudioFile:
             self.export_segments_ffmpeg(
                 path=self.path,
                 out_path=segment_path,
-                durations = tstamps,
+                times = tstamps,
                 segment_list=listpath,
                 segment_list_prefix=tmppath(""),
                 **kwargs
@@ -367,7 +294,7 @@ class AudioFile:
                             self.export_segment_ffmpeg(path=fpath, ss=ss, to=to, out_path=out_path, **kwargs)
                         
                         else:
-                            if det.dur > length_threshold:
+                            if det.dur > length_threshold or overlap == 0:
                                 # If the detection is very long (above length_threshold), use the faster segment ffmpeg command
                                 # In this case we won't have any overlap (this command doesn't allow to do so).
 
@@ -376,7 +303,7 @@ class AudioFile:
 
                                 out_path = f"{base_out_path}_%04d.{splits[-1]}"
 
-                                self.export_segments_ffmpeg(path=fpath, ss=ss, to=to, durations=BIRDNET_AUDIO_DURATION.s, out_path=out_path, **kwargs)
+                                self.export_segments_ffmpeg(path=fpath, ss=ss, to=to, times=BIRDNET_AUDIO_DURATION.s, out_path=out_path, **kwargs)
 
                                 # Rename the files with more readable names (start and end time/date)
                                 out_path = lambda i: f"{base_out_path}_{i:04d}.{splits[-1]}"
@@ -444,7 +371,7 @@ class AudioFile:
                         basepath_out = os.path.join(basepath_noise, ".".join(basename_noise_split[:-1]))
 
                         out_path = f"{basepath_out}%04d.{audio_format}"
-                        self.export_segments_ffmpeg(path=fpath, durations=BIRDNET_AUDIO_DURATION.s, out_path=out_path, **kwargs)
+                        self.export_segments_ffmpeg(path=fpath, times=BIRDNET_AUDIO_DURATION.s, out_path=out_path, **kwargs)
 
                         # TODO: Change the noise filenames to more readable ones.                    
 
