@@ -1,9 +1,12 @@
 from parsers import available_parsers
-from base_classes import TableParser, AudioFile, Logger, ProgressBar
+from base_classes import TableParser, AudioFile, ProcLogger, Logger, ProgressBar, BIRDNET_AUDIO_DURATION, Segment
 from argparse import ArgumentParser
+from datetime import datetime
+import json
 import numpy as np
 import fnmatch
 import time
+import re
 import os
 
 
@@ -19,6 +22,34 @@ def get_parser(table_format: str, **parser_kwargs):
         if table_format_name in tp_init.names:
             table_parser = tp_init
     return table_parser
+
+class LabelMapper:
+    def __init__(self, label_settings_path: str, *args, **kwargs):
+        try:
+            with open(label_settings_path) as fp:
+                self.json_obj = json.load(fp)
+        except:
+            self.json_obj = {}
+        print(self.json_obj)
+        self.map_dict: dict = {} if not "map" in self.json_obj else self.json_obj["map"]
+        self.whitelist = None if not "whitelist" in self.json_obj else self.json_obj["whitelist"]
+        self.blacklist = None if not "blacklist" in self.json_obj else self.json_obj["blacklist"]
+    
+    def black_listed(self, label: str) -> bool:
+        if self.whitelist:
+            return label in self.whitelist and not label in self.blacklist
+        return label in self.blacklist
+    
+    def map(self, label: str) -> str:
+        for k, v in self.map_dict.items():
+            if re.match(k, label):
+                label = v
+                break
+        if self.black_listed(label):
+            label = "Noise"
+        return label
+                
+
 
 class BirdNetTrainer:
     tables_paths: list = []
@@ -49,9 +80,9 @@ class BirdNetTrainer:
     def n_tables(self):
         return len(self.tables_paths)
 
-    def extract_for_training(self, audio_files_dir: str, audio_file_ext: str, export_dir: str, **kwargs):
+    def extract_for_training(self, audio_files_dir: str, audio_file_ext: str, export_dir: str, logger: Logger, **kwargs) -> dict[str, str | int | float]:
         self.map_audiofile_segments: dict[AudioFile, list] = {}
-        segments = []
+        segments: list[Segment] = []
         audiofiles = []
         prog_bar = ProgressBar("Reading tables", len(self.tables_paths))
         for table_path in self.tables_paths:
@@ -59,6 +90,14 @@ class BirdNetTrainer:
             audiofiles += self.parser.get_audio_files(table_path, audio_files_dir, audio_file_ext)
             prog_bar.print(1)
         prog_bar.terminate()
+
+        if "label_settings_path" in kwargs:
+            prog_bar = ProgressBar("Changing labels", len(segments))
+            label_mapper = LabelMapper(**kwargs)
+            for seg in segments:
+                seg.label = label_mapper.map(seg.label)
+                prog_bar.print(1)
+            prog_bar.terminate()
 
         prog_bar = ProgressBar("Mapping annotations to audio files", len(segments))
         for seg, af in zip(segments, audiofiles):
@@ -68,12 +107,10 @@ class BirdNetTrainer:
 
 
         prog_bar = ProgressBar("Exporting segments and noise", len(segments))
-        with open("success.log", "w") as logfile_success:
-            with open("test_err.log", "w") as logfile_errors:
-                for af, segs in self.map_audiofile_segments.items():
-                        logger = Logger(logfile_success=logfile_success, logfile_errors=logfile_errors)
-                        af.export_all_birdnet(export_dir, segs, logger=logger, progress_bar=prog_bar, **kwargs)
-        # prog_bar.terminate()
+        proc_logger = ProcLogger(**kwargs)
+        for af, segs in self.map_audiofile_segments.items():
+            af.export_all_birdnet(export_dir, segs, proc_logger=proc_logger, progress_bar=prog_bar, **kwargs)
+        prog_bar.terminate()
 
 
 
@@ -83,19 +120,26 @@ if __name__ == "__main__":
 
     ts = time.time()
     arg_parser = ArgumentParser()
-    arg_parser.description = "Train a custom BirdNet classifier based on given annotations by first exporting 3s segments."
+    arg_parser.description = f"Train a custom BirdNet classifier based on given annotations by first exporting "\
+                             f"{BIRDNET_AUDIO_DURATION.s:.0f}s segments."
     
     subparsers = arg_parser.add_subparsers(dest="action")
+
+    """
+        Parse arguments to extract audio chunks
+    """
+
     extract_parser = subparsers.add_parser("extract",
                                            help="Extracts audio chunks from long aduio files using FFmpeg based on the given parser annotation." \
                                                 "the result consists of multiple audio file, each 3s long \"chunk\", each in the corresponding." \
                                                 "labelled folder, which can be used to train the BirdNet custom classifier.")
+    
     extract_parser.add_argument("-i", "--input-dir",
                                 dest="tables_dir",
                                 help="Path to the file or folder of the (manual) annotations.",
                                 default=".")
     
-    extract_parser.add_argument("-u", "--recursive",
+    extract_parser.add_argument("-re", "--recursive",
                                 type=bool,
                                 dest="recursive",
                                 help="Wether to look for tables inside the root directory recursively or not.",
@@ -111,55 +155,53 @@ if __name__ == "__main__":
                                 dest="audio_files_dir",
                                 help="Path to the root directory of the audio files. Default=current working dir.", default=".")
     
-    extract_parser.add_argument("-e", "--audio-input-ext",
+    extract_parser.add_argument("-ie", "--audio-input-ext",
                                 dest="audio_input_ext",
                                 required=True,
                                 help="Key-sensitive extension of the input audio files.", default="wav")
     
-    # extract_parser.add_argument("-e", "--audio-input-ext",
-    #                             dest="audio_input_ext",
-    #                             help="Key-sensitive extension of the input audio files.", default="flac")
+    extract_parser.add_argument("-oe", "--audio-output-ext",
+                                dest="audio_output_ext",
+                                help="Key-sensitive extension of the output audio files.", default="flac")
     
 
     extract_parser.add_argument("-o", "--output-dir",
-                                dest="output_dir",
+                                dest="export_dir",
                                 help="Path to the output directory. If doesn't exist, it will be created.",
                                 default=".")
     
-    extract_parser.add_argument("-r", "--resample", help="Resample the chunk to the given value in Hz.", type=int,
-                        default=48000)
+    extract_parser.add_argument("-r", "--resample",
+                                help="Resample the chunk to the given value in Hz.",
+                                type=int,
+                                default=48000)
 
     args = arg_parser.parse_args()
 
 
     if args.action == "extract":
-        bnt = BirdNetTrainer(
-            table_format=args.table_format,
-            tables_dir=args.tables_dir,
-            recursive_subfolders=args.recursive,
-        )
-        bnt.extract_for_training(
-            audio_files_dir=args.audio_files_dir,
-            audio_file_ext=args.audio_input_ext,
-            export_dir=args.output_dir,
-            # audio_format=args.out_audio_ext
-        )
+        export_dir = os.path.join(args.export_dir, datetime.utcnow().strftime("%Y%m%d_%H%M%SUTC"))
+        
+        os.mkdir(export_dir)
+
+        logger = Logger(logfile_path=os.path.join(export_dir, "log.txt"))
 
 
-    # bnt = BirdNetTrainer(
-    #     "raven",
-    #     "C:\\Users\\plaf\\Documents\\raven",
-    #     False
-    # )
-
-    # bnt.extract_for_training(
-    #     audio_files_dir="C:\\Users\\plaf\\Music",
-    #     audio_file_ext="wav",
-    #     export_dir="C:\\Users\\plaf\\Documents\\raven\\out",
-    #     audio_format="flac",
-    #     resample=48000,
-    # )
-
-    # print(time.time() - ts)
-    
+        try:
+            bnt = BirdNetTrainer(
+                table_format=args.table_format,
+                tables_dir=args.tables_dir,
+                recursive_subfolders=args.recursive,
+            )\
+            .extract_for_training(
+                audio_files_dir=args.audio_files_dir,
+                audio_file_ext=args.audio_input_ext,
+                export_dir=export_dir,
+                audio_format=args.audio_output_ext,
+                logger=logger,
+                logfile_errors_path=os.path.join(export_dir, "error_log.txt"),
+                logfile_success_path=os.path.join(export_dir, "success_log.txt"),
+                label_settings_path = os.path.join(args.tables_dir, "labels.json")
+            )
+        except Exception as e:
+            logger.print_exception(e)  
 

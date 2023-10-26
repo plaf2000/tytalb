@@ -8,6 +8,7 @@ import numpy as np
 import tempfile
 import subprocess
 from datetime import datetime, timedelta
+import traceback
 import sys
 import re
 import fnmatch
@@ -71,6 +72,7 @@ class TimeUnit(float):
             return f"{s:06.03f}"
 
 BIRDNET_AUDIO_DURATION = TimeUnit(3)
+NOISE_LABEL = "Noise"
 
 class Segment:
     tstart: TimeUnit
@@ -146,38 +148,63 @@ class ProgressBar():
 
 
 class Logger:
-    def __init__(self, log_type: str = "all", logfile_success: IO = None, logfile_errors: IO = None):
+    def __init__(self, logfile=None, logfile_path=None, log=True):
+        self.logfile_path=logfile_path
+        self.logfile = logfile
+        self.log = log
+        if self.logfile_path is not None:
+            with open(self.logfile_path, "w") as fp:
+                fp.write("")
+
+    def print(self, *args, **kwargs):
+        if self.log:
+            if self.logfile_path is not None:
+                with open(self.logfile_path, "a") as fp:
+                    print(*args, **kwargs, file=fp)
+                    return
+            print(*args, *kwargs, file=self.logfile)
+    
+    def print_exception(self, exception):
+        if self.log:
+            if self.logfile_path is not None:
+                with open(self.logfile_path, "a") as fp:
+                    traceback.print_exception(exception, file=fp)
+                    return
+            traceback.print_exception(exception, file=fp)
+
+        
+        
+
+
+class ProcLogger:
+    def __init__(self, log_type: str = "all", logfile_success: IO = None, logfile_errors: IO = None, logfile_success_path: str = None, logfile_errors_path: str = None, **kwargs):
         self.log_errors = log_type == "errors" or log_type == "all"
         self.log_success = log_type == "all"
-        self.logfile_success = logfile_success
-        self.logfile_errors = logfile_errors
+
+        self.success_logger = Logger(logfile_success, logfile_success_path, self.log_success)
+        self.errors_logger = Logger(logfile_errors, logfile_errors_path, self.log_errors)
         self.errors = 0
         self.successes = 0
 
-    def print_error(self, message):
-        if self.log_errors:
-            print(message, file=self.logfile_errors)
-    
-    def print_success(self, message):
-        if self.log_success:
-            print(message, file=self.logfile_success)
+    def print_success(self, *args, **kwargs):
+        self.success_logger.print(*args, **kwargs)
+
+    def print_errors(self, *args, **kwargs):
+        self.errors_logger.print(*args, **kwargs)
+
 
     def log_process(self, process: subprocess.CompletedProcess, success_message: str, error_message: str):
         try:
             process.check_returncode()
-            self.print_success(success_message)
+            self.success_logger.print(success_message)
             self.successes += 1
         except subprocess.CalledProcessError as e:
-            self.print_error(error_message)
-            self.print_error(f"\t{e}")
+            self.errors_logger.print(error_message)
+            self.errors_logger.print(f"\t{e}")
             error_lines: list[str] = process.stderr.decode('utf_8').splitlines()
             for err in error_lines:
-                self.print_error(f"\t{err}")
+                self.errors_logger.print(f"\t{err}")
             self.errors += 1
-        
-
-
-
 
 
 class AudioFile:
@@ -185,6 +212,8 @@ class AudioFile:
     exported_mask: np.ndarray
     
     def __init__(self, path: str):
+        if not os.path.isfile(path):
+            raise FileNotFoundError()
         self.path = path
         self.basename = os.path.basename(path).split(".")[0]
         self.date_time = None
@@ -318,6 +347,7 @@ class AudioFile:
             resample: int = 48000,
             overlap_s: float = 0, 
             length_threshold_s = 100 * BIRDNET_AUDIO_DURATION.s,
+            proc_logger: ProcLogger = ProcLogger(),
             logger: Logger = Logger(),
             progress_bar: ProgressBar = None,
             **kwargs):
@@ -333,7 +363,7 @@ class AudioFile:
             - `overlap_s` (`float`, optional): The amount of overlap between segments in seconds for segments longer than `BIRDNET_AUDIO_DURATION` (default is 0).
             - `length_threshold_s` (`int`, optional): Length threshold in seconds above which the algorithm will start splitting 
               the long segments using the faster ffmpeg segment command, without overlap (default is 300).
-            - `logger` (`Logger`): object which allow to log success and error messages.
+            - `logger` (`ProcLogger`): object which allow to log success and error messages from the processes.
             - `**kwargs`: Additional keyword arguments for customization.
         Example Usage:
         ```
@@ -366,6 +396,8 @@ class AudioFile:
         # Timestamps where the insterval changes from being 
         # segments-only to noise-only (and vice versa).
         tstamps = np.flatnonzero(np.abs(diff) == 1)
+
+        n_segs = len(segments)
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             tmppath = lambda fname: os.path.join(tmpdirname, fname)
@@ -410,7 +442,7 @@ class AudioFile:
                             # to the audio duration allowed by BirdNet, export the entire segment without any further processing.
                             out_path = self.segment_path(base_path, seg, audio_format)
                             proc = self.export_segment_ffmpeg(path=fpath, ss=ss, to=to, out_path=out_path, **kwargs)
-                            logger.log_process(
+                            proc_logger.log_process(
                                 proc,
                                 f"{seg} from file {self.path} exported to: {out_path}",
                                 f"Error while exporting {seg}:"
@@ -427,7 +459,7 @@ class AudioFile:
 
                            
                             proc = self.export_segments_ffmpeg(path=fpath, ss=ss, to=to, times=BIRDNET_AUDIO_DURATION.s, out_path=out_path, **kwargs)
-                            logger.log_process(
+                            proc_logger.log_process(
                                 proc,
                                 f"{BIRDNET_AUDIO_DURATION.s}s-segments test from {seg} in file {self.path} exported to: {out_path}",
                                 f"Error while exporting {seg}:"
@@ -446,14 +478,14 @@ class AudioFile:
                                 if  tend_seg > seg.tend:
                                     # Remove segment at the end that is shorter than birdnet duration
                                     os.remove(out_path(i))
-                                    logger.print_success(f"Removed {out_path(i)}")
+                                    proc_logger.print_success(f"Removed {out_path(i)}")
                                     i-=1
                                     break
                                 # Rename files
                                 noutp = new_out_path(Segment(tstart_seg, tend_seg, seg.label))
                                 os.replace(out_path(i), noutp)
                                 i+=1
-                            logger.print_success(f"Renamed {i} segments.")
+                            proc_logger.print_success(f"Renamed {i} segments.")
 
                             # Export the very last segment
                             to = seg.tend - tstart_f
@@ -463,7 +495,7 @@ class AudioFile:
                             sub_seg = Segment(ss + tstart_f, to + tstart_f, seg.label)
                             out_path = new_out_path(sub_seg)
                             proc = self.export_segment_ffmpeg(path=fpath, ss=ss, to=to, out_path=out_path, **kwargs)
-                            logger.log_process(
+                            proc_logger.log_process(
                                 proc,
                                 f"{sub_seg} from {seg} in file {self.path} exported to: {out_path}",
                                 f"Error while exporting {seg}:"
@@ -490,7 +522,7 @@ class AudioFile:
                                 
                                 out_path = self.segment_path(base_path, sub_seg, audio_format)
                                 proc = self.export_segment_ffmpeg(path=fpath, ss=ss, to=to, out_path=out_path, **kwargs)
-                                logger.log_process(
+                                proc_logger.log_process(
                                     proc,
                                     f"{sub_seg} from {seg} in file {self.path} exported to: {out_path}",
                                     f"Error while exporting {sub_seg} from {seg}:"
@@ -520,7 +552,7 @@ class AudioFile:
                         # as noise for training.
 
                         basename_noise_split = os.path.basename(fpath).split(".")
-                        basepath_noise = os.path.join(base_path, "Noise")
+                        basepath_noise = os.path.join(base_path, NOISE_LABEL)
                         os.makedirs(basepath_noise, exist_ok=True)
                         basepath_out = os.path.join(basepath_noise, ".".join(basename_noise_split[:-1]))
 
@@ -528,14 +560,22 @@ class AudioFile:
 
                         
                         proc = self.export_segments_ffmpeg(path=fpath, times=BIRDNET_AUDIO_DURATION.s, out_path=out_path, **kwargs)
-                        seg_noise = Segment(tstart_f, tend_f, "Noise")
-                        logger.log_process(
+                        seg_noise = Segment(tstart_f, tend_f, NOISE_LABEL)
+                        proc_logger.log_process(
                             proc,
                             f"{BIRDNET_AUDIO_DURATION.s}s-segment from {seg_noise} in file {self.path} exported to: {out_path}",
                             f"Error while exporting {seg_noise} into segments:"
                         )
 
                         # TODO: Change the noise filenames to more readable ones.                    
+
+        logger.print(
+            f"{self.path}:",
+            n_segs,
+            "annotated segments,",
+            n_exp_segs,
+            "chunks in selection list"
+        ) 
 
 @dataclass
 class Column:
