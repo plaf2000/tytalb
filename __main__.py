@@ -74,7 +74,7 @@ class BirdNetTrainer:
     def n_tables(self):
         return len(self.tables_paths)
 
-    def extract_for_training(self, audio_files_dir: str, audio_file_ext: str, export_dir: str, logger: Logger, **kwargs) -> dict[str, str | int | float]:
+    def extract_for_training(self, audio_files_dir: str, audio_file_ext: str, export_dir: str, **kwargs) -> dict[str, str | int | float]:
         self.map_audiofile_segments: dict[AudioFile, list] = {}
         segments: list[Segment] = []
         audiofiles: list[AudioFile] = []
