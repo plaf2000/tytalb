@@ -1,5 +1,5 @@
 from parsers import available_parsers
-from base_classes import TableParser, AudioFile, Logger
+from base_classes import TableParser, AudioFile, Logger, ProgressBar
 import numpy as np
 import fnmatch
 import time
@@ -39,14 +39,18 @@ class BirdNetExtractor:
                 fpath = os.path.join(self.tables_dir, f)
                 if os.path.isfile(fpath) and self.parser.is_table(fpath):
                     self.tables_paths.append(fpath)
+
+    @property
+    def n_tables(self):
+        return len(self.tables_paths)
         
 
     def extract_segments_from_table(self, table_path: str, audio_files_dir: str, audio_file_ext: str, export_dir: str, **kwargs):
         segments = self.parser.get_segments(table_path, **kwargs)
         audiofiles = self.parser.get_audio_files(table_path, audio_files_dir, audio_file_ext)
 
-        for det, af in zip(segments, audiofiles):
-            af.export_for_birdnet(det, export_dir, **kwargs)
+        for seg, af in zip(segments, audiofiles):
+            af.export_for_birdnet(seg, export_dir, **kwargs)
 
 
     def extract_all_segments(self, audio_files_dir: str, audio_file_ext: str, export_dir: str,  **kwargs):
@@ -67,17 +71,27 @@ class BirdNetExtractor:
         self.map_audiofile_segments: dict[AudioFile, list] = {}
         segments = []
         audiofiles = []
+        prog_bar = ProgressBar("Reading tables", len(self.tables_paths))
         for table_path in self.tables_paths:
             segments += self.parser.get_segments(table_path, **kwargs)
             audiofiles += self.parser.get_audio_files(table_path, audio_files_dir, audio_file_ext)
+            prog_bar.print(1)
+        prog_bar.terminate()
 
-        for det, af in zip(segments, audiofiles):
-            self.map_audiofile_segments.setdefault(af, []).append(det)
+        prog_bar = ProgressBar("Mapping annotations to audio files", len(segments))
+        for seg, af in zip(segments, audiofiles):
+            self.map_audiofile_segments.setdefault(af, []).append(seg)
+            prog_bar.print(1)
+        prog_bar.terminate()
 
+
+        prog_bar = ProgressBar("Exporting segments and noise", len(segments))
         with open("success.log", "w") as logfile_success:
             with open("test_err.log", "w") as logfile_errors:
-                for af, dets in self.map_audiofile_segments.items():
-                        af.export_all_birdnet(export_dir, dets, logger=Logger(logfile_success=logfile_success, logfile_errors=logfile_errors), **kwargs)
+                for af, segs in self.map_audiofile_segments.items():
+                        logger = Logger(logfile_success=logfile_success, logfile_errors=logfile_errors)
+                        af.export_all_birdnet(export_dir, segs, logger=logger, progress_bar=prog_bar, **kwargs)
+        # prog_bar.terminate()
 
 
 

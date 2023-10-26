@@ -111,11 +111,11 @@ class DurSegment(Segment):
 class ProgressBar():
 # Thanks to https://stackoverflow.com/a/37630397
     
-    def __init__(self, text, total, n_threads, bar_length=40):
+    def __init__(self, text: str, total: int, bar_length=40):
         self.total = total
         self.bar_length = bar_length
         self.amount = 0
-        self.increment=total/100//n_threads
+        self.increment=total/100
         self.text = text
         self.print(increment=0)
 
@@ -140,7 +140,9 @@ class ProgressBar():
                 print(f'{self.text}: [{arrow}{padding}] {int(fraction*100)}%', end=ending)
 
     def terminate(self):
-        self.print(self.total - self.amount)
+        rest = self.total - self.amount
+        if rest > 0:
+            self.print(rest)
 
 
 class Logger:
@@ -299,6 +301,7 @@ class AudioFile:
             overlap_s: float = 0, 
             length_threshold_s=100 * BIRDNET_AUDIO_DURATION.s,
             logger: Logger = Logger(),
+            progress_bar: ProgressBar = None,
             **kwargs):
         """
         Export every segment to the corresponding folder in the `base_path` directory, each with the length defined 
@@ -311,12 +314,7 @@ class AudioFile:
             - `overlap_s` (`float`, optional): The amount of overlap between segments in seconds for segments longer than `BIRDNET_AUDIO_DURATION` (default is 0).
             - `length_threshold_s` (`int`, optional): Length threshold in seconds above which the algorithm will start splitting 
               the long segments using the faster ffmpeg segment command, without overlap (default is 300).
-            - `log_type` (`str`): which informations to log (default is `"all"`):
-                - `"all"`: log all informations
-                - `"errors"`: log errors only
-                - `"none"`: do not log.
-            - `logfile_success` (`IO`): used for writing successful operations (default is `None`, print to `sys.stdout`).
-            - `logfile_errors` (`IO`): used for writing errors (default is `None`, print to `sys.stdout`).
+            - `logger` (`Logger`): object which allow to log success and error messages.
             - `**kwargs`: Additional keyword arguments for customization.
         Example Usage:
         ```
@@ -485,6 +483,9 @@ class AudioFile:
                         # set the noise flag to False, so that this part of the 
                         # file is not identified as noise
                         noise = False
+
+                        if progress_bar is not None:
+                            progress_bar.print(1)
 
                         if not segments:
                             seg = None
