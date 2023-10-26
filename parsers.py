@@ -31,7 +31,7 @@ def collect_args(all_locs: dict):
 
 class SonicParser(TableParser):
     def __init__(self, 
-        names = ["sonic-visualizer", "sonic-visualiser", "sv"],
+        names = ["sonic-visualizer", "sv"],
         delimiter = ",",
         tstart = Column("START", 0),
         tend = Column("END", 1),
@@ -47,7 +47,7 @@ class SonicParser(TableParser):
 
 class AudacityParser(TableParser):
     def __init__(self, 
-        names = ["sonic-visualizer", "sonic-visualiser", "sv"],
+        names = ["audacity", "ac"],
         delimiter = "\t",
         tstart = Column(colindex=0),
         tend = Column(colindex=1),

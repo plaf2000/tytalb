@@ -199,7 +199,7 @@ class AudioFile:
             self.prefix, self.suffix = re.split(fre, self.basename)
             self.date_time = datetime.strptime(m.group(0), date_format)
 
-    def segment_path(self, base_path: str, segment: Segment, audio_format = "flac") -> str:
+    def segment_path(self, base_path: str, segment: Segment, audio_format: str) -> str:
         out_path = os.path.join(base_path, segment.label)
         os.makedirs(out_path, exist_ok=True)
     
@@ -218,7 +218,9 @@ class AudioFile:
             to: TimeUnit = None,
             ss_s: float = None,
             to_s: float = None,
-            overwrite = True, **kwargs
+            overwrite = True, 
+            resample: int = None,
+            **kwargs
         ) -> subprocess.CompletedProcess:
 
 
@@ -231,6 +233,11 @@ class AudioFile:
             to = TimeUnit(to_s)
         if to is not None:
             args += ["-to", str(to.s)]
+        
+        if resample is not None and isinstance(resample, int):
+            args += ["-ar", str(resample)]
+            args += ["-osr", str(resample)]
+
 
         args.append(out_path)
 
@@ -253,6 +260,7 @@ class AudioFile:
             segment_list: str = None,
             segment_list_prefix: str = None,
             overwrite: bool =True,
+            resample: int = None,
             **kwargs
         ) -> subprocess.CompletedProcess:
 
@@ -268,6 +276,7 @@ class AudioFile:
             args+=["-ss", str(ss.s)]
         if to is not None:
             args+=["-to", str(to.s)]
+           
 
         args += ["-f", "segment"]
 
@@ -280,6 +289,12 @@ class AudioFile:
             args += ["-segment_list", segment_list]
         if segment_list_prefix is not None:
             args += ["-segment_list_entry_prefix", segment_list_prefix]
+        
+        if resample is not None and isinstance(resample, int):
+            args += ["-ar", str(resample)]
+            args += ["-osr", str(resample)]
+
+        
 
         args.append(out_path)
 
@@ -287,6 +302,8 @@ class AudioFile:
             args.append("-y")
         else: 
             args.append("-n")
+
+    
 
         return subprocess.run(args, capture_output=True)
 
@@ -298,8 +315,9 @@ class AudioFile:
             base_path: str,
             segments: list[Segment],
             audio_format: str = "flac",
+            resample: int = 48000,
             overlap_s: float = 0, 
-            length_threshold_s=100 * BIRDNET_AUDIO_DURATION.s,
+            length_threshold_s = 100 * BIRDNET_AUDIO_DURATION.s,
             logger: Logger = Logger(),
             progress_bar: ProgressBar = None,
             **kwargs):
@@ -311,6 +329,7 @@ class AudioFile:
             - `base_path` (`str`): The base path where the exported audio clips will be saved.
             - `segments` (`list[Segment]`): A list of sound segments to export audio clips for.
             - `audio_format` (`str`, optional): The desired audio format for exported clips, as extension (default is "flac").
+            - `resample` (`int`, optional): Resample output to the given value in Hz (default is 48000).
             - `overlap_s` (`float`, optional): The amount of overlap between segments in seconds for segments longer than `BIRDNET_AUDIO_DURATION` (default is 0).
             - `length_threshold_s` (`int`, optional): Length threshold in seconds above which the algorithm will start splitting 
               the long segments using the faster ffmpeg segment command, without overlap (default is 300).
@@ -330,6 +349,8 @@ class AudioFile:
             as_int = int(ceil(seg.tend.s))
             if  as_int > max_tend:
                 max_tend = as_int
+
+        kwargs["resample"] = resample
 
         # Boolean mask that for each second of the original file,
         # stores whether at least one segment overlaps or not.
