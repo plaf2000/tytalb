@@ -218,7 +218,7 @@ class AudioFile:
         self.basename = os.path.basename(path).split(".")[0]
         self.date_time = None
     
-    def set_date(self, date_format:str = "%Y%m%d_%H%M%S"):
+    def set_date(self, date_format:str = "%Y%m%d_%H%M%S", **kwargs):
         self.date_format = date_format
         fre = date_format
         for k, v in dateel_lengths.items():
@@ -573,8 +573,8 @@ class AudioFile:
             f"{self.path}:",
             n_segs,
             "annotated segments,",
-            n_exp_segs,
-            "chunks in selection list"
+            # n_exp_segs,
+            # "chunks in selection list"
         ) 
 
 @dataclass

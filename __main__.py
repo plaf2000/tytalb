@@ -1,4 +1,4 @@
-from parsers import available_parsers
+from parsers import available_parsers, ap_names
 from base_classes import TableParser, AudioFile, ProcLogger, Logger, ProgressBar, BIRDNET_AUDIO_DURATION, Segment
 from argparse import ArgumentParser
 from datetime import datetime
@@ -8,11 +8,6 @@ import fnmatch
 import time
 import re
 import os
-
-
-ap_names = []
-for ap in available_parsers:
-    ap_names += ap().names
 
 def get_parser(table_format: str, **parser_kwargs):
     table_format_name = table_format.lower()
@@ -30,14 +25,13 @@ class LabelMapper:
                 self.json_obj = json.load(fp)
         except:
             self.json_obj = {}
-        print(self.json_obj)
         self.map_dict: dict = {} if not "map" in self.json_obj else self.json_obj["map"]
         self.whitelist = None if not "whitelist" in self.json_obj else self.json_obj["whitelist"]
         self.blacklist = None if not "blacklist" in self.json_obj else self.json_obj["blacklist"]
     
     def black_listed(self, label: str) -> bool:
         if self.whitelist:
-            return label in self.whitelist and not label in self.blacklist
+            return label not in self.whitelist
         return label in self.blacklist
     
     def map(self, label: str) -> str:
@@ -83,7 +77,7 @@ class BirdNetTrainer:
     def extract_for_training(self, audio_files_dir: str, audio_file_ext: str, export_dir: str, logger: Logger, **kwargs) -> dict[str, str | int | float]:
         self.map_audiofile_segments: dict[AudioFile, list] = {}
         segments: list[Segment] = []
-        audiofiles = []
+        audiofiles: list[AudioFile] = []
         prog_bar = ProgressBar("Reading tables", len(self.tables_paths))
         for table_path in self.tables_paths:
             segments += self.parser.get_segments(table_path, **kwargs)
@@ -101,6 +95,7 @@ class BirdNetTrainer:
 
         prog_bar = ProgressBar("Mapping annotations to audio files", len(segments))
         for seg, af in zip(segments, audiofiles):
+            af.set_date(**kwargs)
             self.map_audiofile_segments.setdefault(af, []).append(seg)
             prog_bar.print(1)
         prog_bar.terminate()
@@ -171,10 +166,17 @@ if __name__ == "__main__":
                                 default=".")
     
     extract_parser.add_argument("-r", "--resample",
-                                help="Resample the chunk to the given value in Hz.",
+                                dest="resample",
+                                help="Resample the chunk to the given value in Hz. (default = 48000)",
                                 type=int,
                                 default=48000)
-
+    
+    extract_parser.add_argument("-df", "--date-fromat",
+                                dest="date_format",
+                                help='Date format of the file. (default = "%%Y%%m%%d_%%H%%M%%S")',
+                                type=str,
+                                default="%Y%m%d_%H%M%S")
+    
     args = arg_parser.parse_args()
 
 
@@ -200,8 +202,12 @@ if __name__ == "__main__":
                 logger=logger,
                 logfile_errors_path=os.path.join(export_dir, "error_log.txt"),
                 logfile_success_path=os.path.join(export_dir, "success_log.txt"),
-                label_settings_path = os.path.join(args.tables_dir, "labels.json")
+                label_settings_path = os.path.join(args.tables_dir, "labels.json"),
+                resample=args.resample,
+                date_format=args.date_format
             )
         except Exception as e:
+            print("An error occured and the operation was not completed!")
+            print(f"Check {logger.logfile_path} for more information.")
             logger.print_exception(e)  
 

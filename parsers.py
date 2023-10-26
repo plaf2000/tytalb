@@ -15,8 +15,6 @@ The attribute `names` is used to identify the parser,
 make sure that there are no overlaps between different parser
 in the `available_parser` list.
 
-
-
 """
 
 
@@ -133,3 +131,8 @@ available_parsers = [
     RavenParser,
     KaleidoscopeParser,
 ]
+
+
+ap_names = []
+for ap in available_parsers:
+    ap_names += ap().names
