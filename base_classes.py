@@ -173,9 +173,6 @@ class Logger:
             traceback.print_exception(exception, file=fp)
 
         
-        
-
-
 class ProcLogger:
     def __init__(self, log_type: str = "all", logfile_success: IO = None, logfile_errors: IO = None, logfile_success_path: str = None, logfile_errors_path: str = None, **kwargs):
         self.log_errors = log_type == "errors" or log_type == "all"
@@ -310,6 +307,9 @@ class AudioFile:
         args += ["-f", "segment"]
 
         if isinstance(times, list) or isinstance(times, np.ndarray):
+            if len(times) == 0:
+                # If no times to split, add a timestamp 0 to guarantee success. TODO: Make this nicer.
+                times = [0]
             args += ["-segment_times", ",".join([str(t) for t in times])]
         else:
             args += ["-segment_time", str(times)]
@@ -369,12 +369,16 @@ class AudioFile:
         ```
         birdnet_instance.export_all_birdnet("./your/output/directory", segments, audio_format="wav", overlap_s=1)
         ```    
-
         """
+
         length_threshold = TimeUnit(length_threshold_s)
         segments = sorted([d.birdnet_pad() for d in segments], key=lambda seg: seg.tstart)
         overlap = TimeUnit(overlap_s)
         max_tend = 0
+        n_segments_original = len(segments)
+        segments = [seg for seg in segments if seg.label != NOISE_LABEL]
+        n_segments = len(segments)
+
         for seg in segments:
             as_int = int(ceil(seg.tend.s))
             if  as_int > max_tend:
@@ -397,7 +401,7 @@ class AudioFile:
         # segments-only to noise-only (and vice versa).
         tstamps = np.flatnonzero(np.abs(diff) == 1)
 
-        n_segs = len(segments)
+        n_labelled_chunks = 0
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             tmppath = lambda fname: os.path.join(tmpdirname, fname)
@@ -406,7 +410,7 @@ class AudioFile:
 
             # Start by efficiently splitting the large data file into smaller chunks of contiguous noise/segments.
 
-            self.export_segments_ffmpeg(
+            proc = self.export_segments_ffmpeg(
                 path=self.path,
                 out_path=segment_path,
                 times = tstamps,
@@ -414,8 +418,15 @@ class AudioFile:
                 segment_list_prefix=tmppath(""),
                 **kwargs
             )
+            proc_logger.log_process(
+                proc,
+                f"Chunked large file into smaller ones following the timestamps: {tstamps}",
+                f"Error while chunking large file into smaller ones following the timestamps {tstamps}:"
+            )
 
-            seg = segments.pop(0)
+            
+
+            seg = segments.pop(0) if segments else None
             
             with open(listpath) as fp:
                 csv_reader = csv.reader(fp)
@@ -447,6 +458,7 @@ class AudioFile:
                                 f"{seg} from file {self.path} exported to: {out_path}",
                                 f"Error while exporting {seg}:"
                             )
+                            n_labelled_chunks += 1
                                              
                         elif seg.dur > length_threshold or overlap == 0:
                             # If the segment is very long (above length_threshold) or overlap is 0, use the faster segment ffmpeg command
@@ -500,24 +512,25 @@ class AudioFile:
                                 f"{sub_seg} from {seg} in file {self.path} exported to: {out_path}",
                                 f"Error while exporting {seg}:"
                             )
+
+                            n_labelled_chunks += i+1
                             
                             
 
                         else:
-                            start = True
                             last = False
-                            while start or ss < to:
+                            n_loops = int(ceil((to - ss) / BIRDNET_AUDIO_DURATION))
+                            for _ in range(n_loops):
                                 to_ = ss + BIRDNET_AUDIO_DURATION
                                 if to_ > to:
                                     # If it is after the end of the segment, move the start back
                                     # so that the segment has the birdnet duration and terminates 
-                                    # at the end of the segment. Set the last flag to true, since
+                                    # at the end of the segment. Set the last flag to `True`, since
                                     # moving forward doesn't make any sense (the entire segment is covered).
-
                                     ss -= to_ - to
                                     to_ = to
                                     last = True
-                                start = False
+
                                 sub_seg = Segment(ss + tstart_f, to_ + tstart_f, seg.label)
                                 
                                 out_path = self.segment_path(base_path, sub_seg, audio_format)
@@ -531,6 +544,7 @@ class AudioFile:
                                 ss = to_ - overlap
                                 if last:
                                     break
+                            n_labelled_chunks += n_loops
                         
                         # If we had any segment in this file chunk, 
                         # set the noise flag to False, so that this part of the 
@@ -571,10 +585,12 @@ class AudioFile:
 
         logger.print(
             f"{self.path}:",
-            n_segs,
+            n_segments_original,
             "annotated segments,",
-            # n_exp_segs,
-            # "chunks in selection list"
+            n_segments,
+            "not blacklisted.",
+            n_labelled_chunks,
+            "labelled chunks"
         ) 
 
 @dataclass
