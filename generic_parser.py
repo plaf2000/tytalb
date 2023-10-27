@@ -1,3 +1,4 @@
+import fnmatch
 import os
 import csv
 from typing import Generator, IO
@@ -71,8 +72,19 @@ class TableParser:
                 self.set_coli(theader)
             for row in csvr:
                 yield self.get_segment(row)
+
+    def get_audio_rel_no_ext_paths(self, table_path: str, tables_base_path: str):
+        table_basename = os.path.basename(table_path)
+        table_subpath = os.path.dirname(table_path)[len(tables_base_path):]
+        audio_rel_no_ext_paths = os.path.join(table_subpath, table_basename.split(".")[0])
+        with open(table_path) as fp:
+            csvr = csv.reader(fp, delimiter=self.delimiter)
+            for _ in csvr:
+                yield audio_rel_no_ext_paths
+
+
     
-    def get_audio_files(self, table_path: str, audio_file_dir_path: str, audio_file_ext: str) -> Generator[AudioFile, None, None]:
+    def get_audio_files(self, table_path: str, tables_base_path: str, audio_file_dir_path: str, audio_file_ext: str) -> Generator[AudioFile, None, None]:
         """
         Given the table path, the directory containing the audio file and the audio file
         extenstion, returns a generator that yields the audio file corresponding to each segment.
@@ -81,16 +93,16 @@ class TableParser:
         by looking in the audio directory for audio files that have the same 
         name as the table + the provided extension in the arguments.
         """
-        table_basename = os.path.basename(table_path)
-        base_path = os.path.join(audio_file_dir_path, table_basename.split(".")[0])
-        audio_path = ".".join([base_path, audio_file_ext])
-        audio_file = AudioFile(audio_path)
         self.all_audio_files.setdefault(audio_path, audio_file)
 
-        with open(table_path) as fp:
-            csvr = csv.reader(fp, delimiter=self.delimiter)
-            for _ in csvr:
-                yield audio_file
+        for rel_path in self.get_audio_rel_no_ext_paths(table_path, tables_base_path):
+            path_no_ext = os.path.join(audio_file_dir_path, rel_path)
+            audio_path = ".".join([path_no_ext, audio_file_ext])
+            audio_file = AudioFile(audio_path)
+            yield audio_file
+
+
+            
 
     def is_table(self, table_path: str) -> bool:
         """

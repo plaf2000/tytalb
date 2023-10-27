@@ -47,6 +47,8 @@ class LabelMapper:
         if self.black_listed(label):
             label = "Noise"
         return label
+    
+
                 
 
 
@@ -75,10 +77,15 @@ class BirdNetTrainer:
                 if os.path.isfile(fpath) and self.parser.is_table(fpath):
                     self.tables_paths.append(fpath)
 
-        self.segments: list[Segment] = []
-        for table_path in self.tables_paths:    
-            self.segments += self.parser.get_segments(table_path)
-        self.segments = sorted([s for s in self.segments], key=lambda seg: seg.tstart)
+        self.audio_files: dict[str, tuple[list[Segment], AudioFile | None]] = {}
+        for table_path in self.tables_paths:
+            for rel_path, segment in zip(self.parser.get_audio_rel_no_ext_paths(table_path, self.tables_dir), self.parser.get_segments(table_path)):
+                segments, _ = self.audio_files.setdefault(rel_path, ([], None))
+                segments.append(segment)
+                
+        for k, v in self.audio_files.items():
+            segments, _ = v
+            self.audio_files[k] = sorted([s for s in segments], key=lambda seg: seg.tstart)
 
     @property
     def n_tables(self):
@@ -92,11 +99,12 @@ class BirdNetTrainer:
         logger.print("Input annotations' folder:", self.tables_dir)
         logger.print("Input audio folder:", audio_files_dir)
         logger.print("Output audio folder:", export_dir)
-        self.map_audiofile_segments: dict[AudioFile, list[Segment]] = {}
+
+        self.map_audiofile_segments: dict[str, list[Segment]] = {}
         audiofiles: list[AudioFile] = []
         prog_bar = ProgressBar("Reading tables", len(self.tables_paths))
         for table_path in self.tables_paths:
-            audiofiles += self.parser.get_audio_files(table_path, audio_files_dir, audio_file_ext)
+            audiofiles += self.parser.get_audio_files(table_path, self.tables_dir, audio_files_dir, audio_file_ext)
             prog_bar.print(1)
         prog_bar.terminate()
 

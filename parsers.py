@@ -100,6 +100,17 @@ class KaleidoscopeParser(TableParser):
             Column("IN FILE", 2),
         ],
         self.all_columns += self.audio_file_path
+
+    def get_audio_rel_no_ext_paths(self, table_path: str, tables_base_path: str):
+        with open(table_path) as fp:
+            csvr = csv.reader(fp, delimiter=self.delimiter)
+            if self.header:
+                theader = next(csvr)
+                self.set_coli(theader)
+            for row in csvr:
+                rel_path: str = os.path.join(*[p.get_val(row) for p in self.audio_file_path[1:]])
+                yield rel_path.split(".")[0]
+        
     
     def get_audio_files(self, table_path, *args, **kwargs):
         with open(table_path) as fp:

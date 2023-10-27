@@ -31,7 +31,7 @@ dateel_lengths = {
 class AudioFile:
     def __init__(self, path: str):
         if not os.path.isfile(path):
-            raise FileNotFoundError()
+            raise FileNotFoundError(f"File {path} not found.")
         self.path = path
         self.basename = os.path.basename(path).split(".")[0]
         self.date_time = None
