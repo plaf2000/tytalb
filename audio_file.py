@@ -192,6 +192,7 @@ class AudioFile:
         ```    
         """
 
+
         length_threshold = TimeUnit(length_threshold_s)
         segments = sorted([d.birdnet_pad() for d in segments], key=lambda seg: seg.tstart)
         overlap = TimeUnit(overlap_s)
@@ -343,9 +344,7 @@ class AudioFile:
                                         f"Error while exporting {seg}:"
                                     ):
                                         i+=1
-                            n_labelled_chunks += i
-
-                                                        
+                            n_labelled_chunks += i    
                             
 
                         else:

@@ -1,3 +1,4 @@
+import subprocess
 from parsers import available_parsers, ap_names
 from generic_parser import TableParser
 from audio_file import AudioFile
@@ -74,34 +75,41 @@ class BirdNetTrainer:
                 if os.path.isfile(fpath) and self.parser.is_table(fpath):
                     self.tables_paths.append(fpath)
 
+        self.segments: list[Segment] = []
+        for table_path in self.tables_paths:    
+            self.segments += self.parser.get_segments(table_path)
+        self.segments = sorted([s for s in self.segments], key=lambda seg: seg.tstart)
+
     @property
     def n_tables(self):
         return len(self.tables_paths)
+    
+    @property
+    def n_segments(self):
+        return len(self.segments)
 
     def extract_for_training(self, audio_files_dir: str, audio_file_ext: str, export_dir: str, logger: Logger, **kwargs) -> dict[str, str | int | float]:
         logger.print("Input annotations' folder:", self.tables_dir)
         logger.print("Input audio folder:", audio_files_dir)
         logger.print("Output audio folder:", export_dir)
-        self.map_audiofile_segments: dict[AudioFile, list] = {}
-        segments: list[Segment] = []
+        self.map_audiofile_segments: dict[AudioFile, list[Segment]] = {}
         audiofiles: list[AudioFile] = []
         prog_bar = ProgressBar("Reading tables", len(self.tables_paths))
         for table_path in self.tables_paths:
-            segments += self.parser.get_segments(table_path, **kwargs)
             audiofiles += self.parser.get_audio_files(table_path, audio_files_dir, audio_file_ext)
             prog_bar.print(1)
         prog_bar.terminate()
 
         if "label_settings_path" in kwargs:
-            prog_bar = ProgressBar("Changing labels", len(segments))
+            prog_bar = ProgressBar("Changing labels", self.n_segments)
             label_mapper = LabelMapper(**kwargs)
-            for seg in segments:
+            for seg in self.segments:
                 seg.label = label_mapper.map(seg.label)
                 prog_bar.print(1)
             prog_bar.terminate()
 
-        prog_bar = ProgressBar("Mapping annotations to audio files", len(segments))
-        for seg, af in zip(segments, audiofiles):
+        prog_bar = ProgressBar("Mapping annotations to audio files", self.n_segments)
+        for seg, af in zip(self.segments, audiofiles):
             af.set_date(**kwargs)
             self.map_audiofile_segments.setdefault(af, []).append(seg)
             prog_bar.print(1)
@@ -123,13 +131,13 @@ if __name__ == "__main__":
 
     ts = time.time()
     arg_parser = ArgumentParser()
-    arg_parser.description = f"Train a custom BirdNet classifier based on given annotations by first exporting "\
-                             f"{BIRDNET_AUDIO_DURATION.s:.0f}s segments."
+    arg_parser.description = f"Train and validate a custom BirdNet classifier based on given annotations by first exporting "\
+                             f"{BIRDNET_AUDIO_DURATION.s}s segments."
     
     subparsers = arg_parser.add_subparsers(dest="action")
 
     """
-        Parse arguments to extract audio chunks
+        Parse arguments to extract audio chunks.
     """
 
     extract_parser = subparsers.add_parser("extract",
@@ -145,7 +153,7 @@ if __name__ == "__main__":
     extract_parser.add_argument("-re", "--recursive",
                                 type=bool,
                                 dest="recursive",
-                                help="Wether to look for tables inside the root directory recursively or not.",
+                                help="Wether to look for tables inside the root directory recursively or not (default=True).",
                                 default=True)
     
     extract_parser.add_argument("-f", "--annotation-format",
@@ -175,9 +183,15 @@ if __name__ == "__main__":
     
     extract_parser.add_argument("-r", "--resample",
                                 dest="resample",
-                                help=f"Resample the chunk to the given value in Hz. (default = {BIRDNET_SAMPLE_RATE})",
+                                help=f"Resample the chunk to the given value in Hz. (default={BIRDNET_SAMPLE_RATE})",
                                 type=int,
                                 default=BIRDNET_SAMPLE_RATE)
+    
+    extract_parser.add_argument("-co", "--chunk-overlap",
+                                dest="chunk_overlap",
+                                help=f"Overlap in seconds between chunks for segments longer than {BIRDNET_AUDIO_DURATION.s}s."\
+                                     F"If it is 0 (by default) the program may run faster.",
+                                default=0)
     
     extract_parser.add_argument("-df", "--date-fromat",
                                 dest="date_format",
@@ -185,10 +199,17 @@ if __name__ == "__main__":
                                 type=str,
                                 default="%Y%m%d_%H%M%S")
     
-    args = arg_parser.parse_args()
+    """
+        Parse arguments to train the model.
+    """
+    extract_parser = subparsers.add_parser("train")
+
+    
+    args, custom_args = arg_parser.parse_known_args()
 
 
     if args.action == "extract":
+        os.makedirs(args.export_dir, exist_ok=True)
         export_dir = os.path.join(args.export_dir, datetime.utcnow().strftime("%Y%m%d_%H%M%SUTC"))
         os.mkdir(export_dir)
         
@@ -217,6 +238,7 @@ if __name__ == "__main__":
                 logfile_success_path=os.path.join(export_dir, "success_log.txt"),
                 label_settings_path = os.path.join(args.tables_dir, "labels.json"),
                 resample=args.resample,
+                overlap_s=args.chunk_overlap,
                 date_format=args.date_format
             )
         
@@ -225,4 +247,7 @@ if __name__ == "__main__":
             print("An error occured and the operation was not completed!")
             print(f"Check {logger.logfile_path} for more information.")
             logger.print_exception(e)  
+    elif args.action == "train":
+        subprocess.run(["python3", "BirdNET-Analyzer/train.py"] + custom_args)
+
 
