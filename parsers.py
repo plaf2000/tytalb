@@ -1,4 +1,6 @@
-from base_classes import TableParser, Column, DurSegment, Segment, AudioFile
+from generic_parser import TableParser, Column
+from segment import DurSegment, Segment
+from audio_file import AudioFile
 from inspect import signature
 import csv
 import os 

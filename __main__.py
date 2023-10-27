@@ -1,5 +1,9 @@
 from parsers import available_parsers, ap_names
-from base_classes import TableParser, AudioFile, ProcLogger, Logger, ProgressBar, BIRDNET_AUDIO_DURATION, Segment
+from generic_parser import TableParser
+from audio_file import AudioFile
+from loggers import ProcLogger, Logger, ProgressBar 
+from variables import BIRDNET_AUDIO_DURATION
+from segment import Segment
 from argparse import ArgumentParser
 from datetime import datetime
 import json
@@ -74,7 +78,10 @@ class BirdNetTrainer:
     def n_tables(self):
         return len(self.tables_paths)
 
-    def extract_for_training(self, audio_files_dir: str, audio_file_ext: str, export_dir: str, **kwargs) -> dict[str, str | int | float]:
+    def extract_for_training(self, audio_files_dir: str, audio_file_ext: str, export_dir: str, logger: Logger, **kwargs) -> dict[str, str | int | float]:
+        logger.print("Input annotations' folder:", self.tables_dir)
+        logger.print("Input audio folder:", audio_files_dir)
+        logger.print("Output audio folder:", export_dir)
         self.map_audiofile_segments: dict[AudioFile, list] = {}
         segments: list[Segment] = []
         audiofiles: list[AudioFile] = []
@@ -103,8 +110,9 @@ class BirdNetTrainer:
 
         prog_bar = ProgressBar("Exporting segments and noise", len(segments))
         proc_logger = ProcLogger(**kwargs)
+        logger.print("Found", len(self.map_audiofile_segments), "audio files.")
         for af, segs in self.map_audiofile_segments.items():
-            af.export_all_birdnet(export_dir, segs, proc_logger=proc_logger, progress_bar=prog_bar, **kwargs)
+            af.export_all_birdnet(export_dir, segs, proc_logger=proc_logger, logger=logger, progress_bar=prog_bar, **kwargs)
         prog_bar.terminate()
 
 
@@ -182,10 +190,15 @@ if __name__ == "__main__":
 
     if args.action == "extract":
         export_dir = os.path.join(args.export_dir, datetime.utcnow().strftime("%Y%m%d_%H%M%SUTC"))
-        
         os.mkdir(export_dir)
+        
+        # export_dir =args.export_dir
+        
 
         logger = Logger(logfile_path=os.path.join(export_dir, "log.txt"))
+
+        logger.print("Started processing...")
+        ts = time.time()
 
 
         try:
@@ -206,6 +219,8 @@ if __name__ == "__main__":
                 resample=args.resample,
                 date_format=args.date_format
             )
+        
+            logger.print(f"... end of processing (elapsed {time.time()-ts:.1f}s)")
         except Exception as e:
             print("An error occured and the operation was not completed!")
             print(f"Check {logger.logfile_path} for more information.")

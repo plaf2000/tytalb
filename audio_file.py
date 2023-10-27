@@ -1,20 +1,18 @@
-from pydub import AudioSegment
-from pydub.utils import mediainfo
-from dataclasses import dataclass
-from math import ceil
-from typing import Generator, IO
-import random
-import numpy as np
-import tempfile
-import subprocess
-from datetime import datetime, timedelta
-import traceback
-import sys
-import re
-import fnmatch
-
-import os
 import csv
+from datetime import datetime, timedelta
+from math import ceil
+import os
+import tempfile
+
+import numpy as np 
+from segment import Segment
+from units import TimeUnit
+import subprocess
+import re
+from loggers import Logger, ProcLogger, ProgressBar
+
+from variables import BIRDNET_AUDIO_DURATION, NOISE_LABEL
+
 
 dateel_lengths = {
     "%Y": 4,
@@ -30,191 +28,7 @@ dateel_lengths = {
     "%f": 6,
 }
 
-class TimeUnit(float):
-    def __init__(self, s: float | str = 0, ms: float | str | None = None):
-        if ms is not None:
-            s = float(ms) / 1000
-        self = float(s)
-
-    def __add__(self, other):
-        return TimeUnit(super().__add__(other))
-    
-    def __mul__(self, other):
-        return TimeUnit(super().__mul__(other))
-    
-    def __sub__(self, other):
-        return TimeUnit(super().__sub__(other))
-
-    def __truediv__(self, other):
-        return TimeUnit(super().__truediv__(other))
-
-    
-    @property
-    def s(self):
-        return self
-    
-    @property
-    def ms(self):
-        return int(self * 1000)
-    
-    
-    def time_str(self, write_all=False) -> str:
-        s = round(self.s, ndigits=3)
-        h = s // 3600
-        s -= h * 3600
-        m = s // 60
-        s -= m*60
-        if write_all or h>0:
-            return f"{h:02.0f}:{m:02.0f}:{s:06.03f}"
-        if m>0:
-            return f"{m:02.0f}:{s:06.03f}"
-        if s>0:
-            return f"{s:06.03f}"
-
-BIRDNET_AUDIO_DURATION = TimeUnit(3)
-NOISE_LABEL = "Noise"
-
-class Segment:
-    tstart: TimeUnit
-    tend: TimeUnit
-    label: str |None
-
-    def __init__(self, tstart_s: float, tend_s: float, label: str = None):
-        self.tstart = TimeUnit(float(tstart_s))
-        self.tend = TimeUnit(float(tend_s))
-        self.label = label    
-        
-    @property
-    def dur(self) -> TimeUnit:
-        return self.tend - self.tstart
-    
-    def centered_pad(self, pad: TimeUnit):
-        return Segment(self.tstart - pad, self.tend + pad, self.label)
-
-    def centered_pad_to(self, duration: TimeUnit):
-        return self.centered_pad((duration - self.dur)/2)
-
-    def birdnet_pad(self):
-        if self.dur > BIRDNET_AUDIO_DURATION:
-            return self
-        return self.centered_pad_to(BIRDNET_AUDIO_DURATION)
-
-    def __str__(self):
-        seg_name = f" \"{self.label}\"" if self.label is not None else ""
-        return f"Segment{seg_name}: [{self.tstart.time_str(True)}, {self.tend.time_str(True)}]"
-    
-    
-
-class DurSegment(Segment):
-    def __init__(self, tstart, dur, label):
-        super().__init__(tstart, tstart+dur, label)    
-
-
-class ProgressBar():
-# Thanks to https://stackoverflow.com/a/37630397
-    
-    def __init__(self, text: str, total: int, bar_length=40):
-        self.total = total
-        self.bar_length = bar_length
-        self.amount = 0
-        self.increment=total/100
-        self.text = text
-        self.print(increment=0)
-
-    def is_to_update(self, i, verbose):
-                i+=1
-                return verbose and not i%self.increment
-    
-    def print(self, increment=None):
-                if increment is None:
-                    increment = self.increment
-                self.amount+=increment
-                if self.amount > self.total:
-                    self.amount = self.total
-
-                fraction = self.amount / self.total
-
-                arrow = int(fraction * self.bar_length - 1) * '-' + '>'
-                padding = int(self.bar_length - len(arrow)) * ' '
-
-                ending = '\n' if self.amount == self.total else '\r'
-
-                print(f'{self.text}: [{arrow}{padding}] {int(fraction*100)}%', end=ending)
-
-    def terminate(self):
-        rest = self.total - self.amount
-        if rest > 0:
-            self.print(rest)
-
-
-class Logger:
-    def __init__(self, logfile=None, logfile_path=None, log=True, log_date=True):
-        self.logfile_path=logfile_path
-        self.logfile = logfile
-        self.log_date = log_date
-        self.log = log
-        if self.logfile_path is not None:
-            with open(self.logfile_path, "w") as fp:
-                fp.write("")
-
-    def print(self, *args, **kwargs):
-        if self.log:
-            if self.log_date:
-                args = list(args)
-                args.insert(0, datetime.utcnow().isoformat()) 
-            if self.logfile_path is not None:
-                with open(self.logfile_path, "a") as fp:
-                    print(*args, **kwargs, file=fp)
-                    return
-            print(*args, *kwargs, file=self.logfile)
-    
-    def print_exception(self, exception):
-        if self.log:
-            self.print("The following error occured:")
-            if self.logfile_path is not None:
-                with open(self.logfile_path, "a") as fp:
-                    traceback.print_exception(exception, file=fp)
-                    return
-            traceback.print_exception(exception, file=fp)
-
-        
-class ProcLogger:
-    def __init__(self, log_type: str = "all", logfile_success: IO = None, logfile_errors: IO = None, logfile_success_path: str = None, logfile_errors_path: str = None, **kwargs):
-        self.log_errors = log_type == "errors" or log_type == "all"
-        self.log_success = log_type == "all"
-
-        self.success_logger = Logger(logfile_success, logfile_success_path, self.log_success)
-        self.errors_logger = Logger(logfile_errors, logfile_errors_path, self.log_errors)
-        self.errors = 0
-        self.successes = 0
-
-    def print_success(self, *args, **kwargs):
-        self.success_logger.print(*args, **kwargs)
-
-    def print_errors(self, *args, **kwargs):
-        self.errors_logger.print(*args, **kwargs)
-
-
-    def log_process(self, process: subprocess.CompletedProcess, success_message: str, error_message: str) -> bool:
-        try:
-            process.check_returncode()
-            self.success_logger.print(success_message)
-            self.successes += 1
-            return True
-        except subprocess.CalledProcessError as e:
-            self.errors_logger.print(error_message)
-            self.errors_logger.print(f"\t{e}")
-            error_lines: list[str] = process.stderr.decode('utf_8').splitlines()
-            for err in error_lines:
-                self.errors_logger.print(f"\t{err}")
-            self.errors += 1
-            return False
-
-
 class AudioFile:
-    audio_segment: AudioSegment = None
-    exported_mask: np.ndarray
-    
     def __init__(self, path: str):
         if not os.path.isfile(path):
             raise FileNotFoundError()
@@ -452,6 +266,7 @@ class AudioFile:
                     while seg and seg.tend < tend_f:
                         # Until there are segments in the list within the chunk range
 
+
                         ss = seg.tstart - tstart_f
                         to = seg.tend - tstart_f
                         
@@ -459,8 +274,9 @@ class AudioFile:
                             # If the duration of the segment is smaller or (most likely, since we added padding) equal
                             # to the audio duration allowed by BirdNet, export the entire segment without any further processing.
                             out_path = self.segment_path(base_path, seg, audio_format)
-                            proc = self.export_segment_ffmpeg(path=fpath, ss=ss, to=to, out_path=out_path, **kwargs)
                             if not os.path.isfile(out_path):
+                                proc = self.export_segment_ffmpeg(path=fpath, ss=ss, to=to, out_path=out_path, **kwargs)
+
                                 if proc_logger.log_process(
                                     proc,
                                     f"{seg} from file {self.path} exported to: {out_path}",
@@ -561,8 +377,6 @@ class AudioFile:
                                 ss = to_ - overlap
                                 if last:
                                     break
-                            
-
                         
                         # If we had any segment in this file chunk, 
                         # set the noise flag to False, so that this part of the 
@@ -616,97 +430,3 @@ class AudioFile:
             noise_chunks,
             "noise chunks"
         ) 
-
-@dataclass
-class Column:
-    colname: str = None
-    colindex: int = None
-
-    def set_coli(self, header_row: list):
-        """
-        Finds the column in the header.
-        """
-        self.colindex = header_row.index(self.colname)
-
-    def get_val(self, row: list):
-        """
-        Given the row's cells as list, return the value of the corresponding column.
-        """
-        return row[self.colindex]
-
-@dataclass
-class TableParser:
-    names: list[str]
-    delimiter: str
-    tstart: Column
-    tend: Column
-    label: Column
-    segment_type: Segment
-    header: bool = True
-    table_fnmatch: str = "*.csv"
-
-    def __post_init__(self):
-        # `self.columns` lists the columns used for retrieving the segment data (order is relevant!)
-        self.columns: list[Column] = [self.tstart, self.tend, self.label]
-        # `self.all_columns` lists all the columns, it is used to set the indices from the header
-        self.all_columns: list[Column] = self.columns
-
-        # Dictionary mapping from paths to `AudioFile` objects contained in the segment table
-        # (usually, only one).
-        self.all_audio_files: dict[str, AudioFile] = {}
-
-    def set_coli(self, *args, **kwargs):
-        """
-        Set the column indices for columns that have headers.
-        """
-        if self.header:
-            for col in self.all_columns:
-                col.set_coli(*args, **kwargs)
-
-    def get_segment(self, row: list) -> Segment:
-        """
-        Instantiate the `Segment` object by reading the row values.
-        """
-        return self.segment_type(
-            *[col.get_val(row) for col in self.columns]
-        )
-
-    def get_segments(self, table_path: str, *args, **kwargs) -> Generator[Segment, None, None]:
-        """
-        Returns a generator that for each line of the table yields the segment.
-        If the table has an header, it first sets the columns using the header.
-        """
-        with open(table_path) as fp:
-            csvr = csv.reader(fp, delimiter=self.delimiter)
-            if self.header:
-                theader = next(csvr)
-                self.set_coli(theader)
-            for row in csvr:
-                yield self.get_segment(row)
-    
-    def get_audio_files(self, table_path: str, audio_file_dir_path: str, audio_file_ext: str) -> Generator[AudioFile, None, None]:
-        """
-        Given the table path, the directory containing the audio file and the audio file
-        extenstion, returns a generator that yields the audio file corresponding to each segment.
-
-        By default, there is only one audio file per table, which is retrieved
-        by looking in the audio directory for audio files that have the same 
-        name as the table + the provided extension in the arguments.
-        """
-        table_basename = os.path.basename(table_path)
-        base_path = os.path.join(audio_file_dir_path, table_basename.split(".")[0])
-        audio_path = ".".join([base_path, audio_file_ext])
-        audio_file = AudioFile(audio_path)
-        self.all_audio_files.setdefault(audio_path, audio_file)
-
-        with open(table_path) as fp:
-            csvr = csv.reader(fp, delimiter=self.delimiter)
-            for _ in csvr:
-                yield audio_file
-
-    def is_table(self, table_path: str) -> bool:
-        """
-        Returns if the provided path matches the tables' file name pattern.
-        """
-        basename = os.path.basename(table_path)
-        return fnmatch.fnmatch(basename, self.table_fnmatch)
