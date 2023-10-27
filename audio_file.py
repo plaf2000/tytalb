@@ -1,5 +1,6 @@
 import csv
 from datetime import datetime, timedelta
+import soundfile as sf
 from math import ceil
 import os
 import tempfile
@@ -34,6 +35,7 @@ class AudioFile:
             raise FileNotFoundError(f"File {path} not found.")
         self.path = path
         self.basename = os.path.basename(path).split(".")[0]
+        self.duration = sf.info(self.path).duration
         self.date_time = None
     
     def set_date(self, date_format:str = "%Y%m%d_%H%M%S", **kwargs):

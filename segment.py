@@ -26,6 +26,18 @@ class Segment:
             return self
         return self.centered_pad_to(BIRDNET_AUDIO_DURATION)
 
+    def overlapping_time(self, other: 'Segment'):
+        # Copied from Pshemek
+        ov_b = max(self.tstart, other.tstart)
+        ov_e = min(self.tend, other.tend)
+        return max(0.0, ov_e - ov_b)
+
+    def overlapping_perc(self, other: 'Segment'):
+        return self.overlapping_time(other)/self.dur
+    
+    def overlaps(self, other: 'Segment'):
+        return self.overlapping_time(other) > 0
+
     def __str__(self):
         seg_name = f" \"{self.label}\"" if self.label is not None else ""
         return f"Segment{seg_name}: [{self.tstart.time_str(True)}, {self.tend.time_str(True)}]"

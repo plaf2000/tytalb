@@ -1,11 +1,11 @@
-from dataclasses import dataclass
+from __future__ import annotations
 from functools import cached_property
 import subprocess
 from parsers import available_parsers, ap_names
 from generic_parser import TableParser
 from audio_file import AudioFile
 from loggers import ProcLogger, Logger, ProgressBar 
-from variables import BIRDNET_AUDIO_DURATION, BIRDNET_SAMPLE_RATE
+from variables import BIRDNET_AUDIO_DURATION, BIRDNET_SAMPLE_RATE, NOISE_LABEL
 from segment import Segment
 from argparse import ArgumentParser
 from datetime import datetime
@@ -50,11 +50,13 @@ class LabelMapper:
             label = "Noise"
         return label
     
-@dataclass
 class SegmentsWrapper:
-    segments: list[Segment] = []
-    audio_file: AudioFile | None = None
+    segments: list[Segment]
+    audio_file: AudioFile | None
 
+    def __init__(self, segments  = [], audio_file = None):
+        self.segments = segments
+        self.audio_file = audio_file
 
 class BirdNetTrainer:
     tables_paths: list = []
@@ -134,6 +136,58 @@ class BirdNetTrainer:
             af_wrap.audio_file.export_all_birdnet(export_dir, af_wrap.segments, proc_logger=proc_logger, logger=logger, progress_bar=prog_bar, **kwargs)
         prog_bar.terminate()
 
+    def validate(self, other: BirdNetTrainer, *args, **kwargs):
+        validate(ground_truth=self, to_validate=other, *args, **kwargs) 
+    
+
+def validate(ground_truth: BirdNetTrainer, to_validate: BirdNetTrainer, binary=False, positive_label=None):
+
+    all_rel_paths = set(ground_truth.audio_files.keys()) + set(to_validate.audio_files.keys())
+
+    labels: set[str] = set()
+
+    for bnt in [ground_truth, to_validate]:
+        for af_wrapper in bnt.audio_files.values():
+            for seg in af_wrapper.segments:
+                labels.add(seg.label)
+
+    labels = sorted(labels)
+
+    n_labels = len(labels)
+
+    if binary and n_labels>2:
+        raise Exception("Binary classification with more than one label! Please specify the positive label.")
+    
+    index: dict[str, int]
+
+    for i, label in enumerate(labels):
+        index[label] = i
+    
+    conf_matrix = np.zeros((n_labels, n_labels), np.int64)
+               
+    for rel_path in all_rel_paths:
+        af_gt, af_tv = None, None
+        if rel_path in ground_truth.audio_files:
+            af_gt = ground_truth.audio_files[rel_path]
+
+        if rel_path in to_validate.audio_files:
+            af_tv = to_validate.audio_files[rel_path]
+
+        if not rel_path in ground_truth.audio_files:
+            # TODO
+            continue
+        
+        if not rel_path in to_validate.audio_files:
+            # TODO
+            continue
+    
+        if af_gt.audio_file is not None:
+            duration = af_gt.audio_file.duration
+        
+        elif af_tv.audio_file is not None:
+            duration = af_tv.audio_file.duration
+            
+        
 
 
 
