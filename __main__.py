@@ -150,6 +150,8 @@ def validate(ground_truth: BirdNetTrainer, to_validate: BirdNetTrainer, binary=F
         for af_wrapper in bnt.audio_files.values():
             for seg in af_wrapper.segments:
                 labels.add(seg.label)
+    
+    labels.add(NOISE_LABEL)
 
     labels = sorted(labels)
 
@@ -163,7 +165,7 @@ def validate(ground_truth: BirdNetTrainer, to_validate: BirdNetTrainer, binary=F
     for i, label in enumerate(labels):
         index[label] = i
     
-    conf_matrix = np.zeros((n_labels, n_labels), np.int64)
+    conf_time_matrix = np.zeros((n_labels, n_labels), np.float64)
                
     for rel_path in all_rel_paths:
         af_gt, af_tv = None, None
@@ -174,20 +176,58 @@ def validate(ground_truth: BirdNetTrainer, to_validate: BirdNetTrainer, binary=F
             af_tv = to_validate.audio_files[rel_path]
 
         if not rel_path in ground_truth.audio_files:
-            # TODO
+            # duration = af_tv.audio_file.duration
+            for seg in af_tv.segments:
+                conf_time_matrix[index[NOISE_LABEL], index[seg.label]] = seg.dur
             continue
         
         if not rel_path in to_validate.audio_files:
-            # TODO
+            for seg in af_gt.segments:
+                conf_time_matrix[index[seg.label], index[NOISE_LABEL]] = seg.dur
             continue
     
-        if af_gt.audio_file is not None:
-            duration = af_gt.audio_file.duration
         
-        elif af_tv.audio_file is not None:
-            duration = af_tv.audio_file.duration
-            
+        # if af_gt.audio_file is not None:
+        #     duration = af_gt.audio_file.duration
         
+        # elif af_tv.audio_file is not None:
+        #     duration = af_tv.audio_file.duration
+
+
+        segs_gt = af_gt.segments.copy()
+        segs_tv = sorted(af_tv.segments, key=lambda seg: seg.tend)
+        # overlaps = np.zeros(len(seg_gt), dtype=np.float64)
+
+        for seg_gt in segs_gt:
+            while segs_tv and segs_tv[0].tend < seg_gt.tstart:
+                segs_tv.pop(0)
+        
+            tot_overlapping = 0
+            for seg_tv in enumerate(segs_tv):
+                if seg_gt.overlaps(seg_tv):
+                    ot = seg_tv.overlapping_time(seg_gt)
+                    conf_time_matrix[index[seg_gt.label], index[seg_tv.label]] += ot
+                    tot_overlapping+=ot
+            conf_time_matrix[index[seg_gt.label], index[NOISE_LABEL]] += seg_gt.dur - tot_overlapping
+
+        segs_gt = sorted(af_gt.segments, key=lambda seg: seg.tend)
+        segs_tv = af_tv.segments.copy()
+
+        # TODO: Store the overlappings somewhere, so there's no need to reiterate ad 
+        for seg_tv in segs_tv:
+            while segs_gt and segs_gt[0].tend < seg_tv.tstart:
+                segs_gt.pop(0)
+
+            tot_overlapping = 0
+            for seg_gt in segs_gt:
+                if seg_gt.overlaps(seg_tv):
+                    ot = seg_gt.overlapping_time(seg_tv)
+                    conf_time_matrix[index[seg_gt.label], index[seg_tv.label]] += ot
+                    tot_overlapping+=ot
+            conf_time_matrix[index[NOISE_LABEL], index[seg_gt.label]] += seg_tv.dur - tot_overlapping
+
+
+
 
 
 
