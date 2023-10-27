@@ -2,7 +2,7 @@ from parsers import available_parsers, ap_names
 from generic_parser import TableParser
 from audio_file import AudioFile
 from loggers import ProcLogger, Logger, ProgressBar 
-from variables import BIRDNET_AUDIO_DURATION
+from variables import BIRDNET_AUDIO_DURATION, BIRDNET_SAMPLE_RATE
 from segment import Segment
 from argparse import ArgumentParser
 from datetime import datetime
@@ -175,9 +175,9 @@ if __name__ == "__main__":
     
     extract_parser.add_argument("-r", "--resample",
                                 dest="resample",
-                                help="Resample the chunk to the given value in Hz. (default = 48000)",
+                                help=f"Resample the chunk to the given value in Hz. (default = {BIRDNET_SAMPLE_RATE})",
                                 type=int,
-                                default=48000)
+                                default=BIRDNET_SAMPLE_RATE)
     
     extract_parser.add_argument("-df", "--date-fromat",
                                 dest="date_format",

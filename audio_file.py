@@ -11,7 +11,7 @@ import subprocess
 import re
 from loggers import Logger, ProcLogger, ProgressBar
 
-from variables import BIRDNET_AUDIO_DURATION, NOISE_LABEL
+from variables import BIRDNET_AUDIO_DURATION, NOISE_LABEL, BIRDNET_SAMPLE_RATE
 
 
 dateel_lengths = {
@@ -165,7 +165,7 @@ class AudioFile:
             base_path: str,
             segments: list[Segment],
             audio_format: str = "flac",
-            resample: int = 48000,
+            resample: int = BIRDNET_SAMPLE_RATE,
             overlap_s: float = 0, 
             length_threshold_s = 100 * BIRDNET_AUDIO_DURATION.s,
             proc_logger: ProcLogger = ProcLogger(),
@@ -180,7 +180,7 @@ class AudioFile:
             - `base_path` (`str`): The base path where the exported audio clips will be saved.
             - `segments` (`list[Segment]`): A list of sound segments to export audio clips for.
             - `audio_format` (`str`, optional): The desired audio format for exported clips, as extension (default is "flac").
-            - `resample` (`int`, optional): Resample output to the given value in Hz (default is 48000).
+            - `resample` (`int`, optional): Resample output to the given value in Hz (default is `BIRDNET_SAMPLE_RATE` from `variables`).
             - `overlap_s` (`float`, optional): The amount of overlap between segments in seconds for segments longer than `BIRDNET_AUDIO_DURATION` (default is 0).
             - `length_threshold_s` (`int`, optional): Length threshold in seconds above which the algorithm will start splitting 
               the long segments using the faster ffmpeg segment command, without overlap (default is 300).
