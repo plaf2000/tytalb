@@ -74,6 +74,19 @@ class TableParser:
                 yield self.get_segment(row)
 
     def get_audio_rel_no_ext_paths(self, table_path: str, tables_base_path: str):
+        """
+        Given the table path, the directory containing the audio file and the audio file
+        extenstion, returns a generator that yields the path to theaudio file corresponding 
+        to each segment.
+        The path is relative to the `tables_base_path` and doesn't contain the audio file 
+        extension. 
+        This is used to uniquely identify detections, i.e. two detections from two different
+        files should have a different return value, but the path doesn't need to exist.
+
+        By default, there is only one audio file per table, which is retrieved
+        by looking in the audio directory for audio files that have the same 
+        name as the table + the provided extension in the arguments.
+        """
         table_basename = os.path.basename(table_path)
         table_subpath = os.path.dirname(table_path)[len(tables_base_path):]
         audio_rel_no_ext_paths = os.path.join(table_subpath, table_basename.split(".")[0])
@@ -83,23 +96,6 @@ class TableParser:
                 yield audio_rel_no_ext_paths
 
 
-    
-    def get_audio_files(self, table_path: str, tables_base_path: str, audio_file_dir_path: str, audio_file_ext: str) -> Generator[AudioFile, None, None]:
-        """
-        Given the table path, the directory containing the audio file and the audio file
-        extenstion, returns a generator that yields the audio file corresponding to each segment.
-
-        By default, there is only one audio file per table, which is retrieved
-        by looking in the audio directory for audio files that have the same 
-        name as the table + the provided extension in the arguments.
-        """
-        self.all_audio_files.setdefault(audio_path, audio_file)
-
-        for rel_path in self.get_audio_rel_no_ext_paths(table_path, tables_base_path):
-            path_no_ext = os.path.join(audio_file_dir_path, rel_path)
-            audio_path = ".".join([path_no_ext, audio_file_ext])
-            audio_file = AudioFile(audio_path)
-            yield audio_file
 
 
             

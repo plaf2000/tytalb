@@ -112,16 +112,16 @@ class KaleidoscopeParser(TableParser):
                 yield rel_path.split(".")[0]
         
     
-    def get_audio_files(self, table_path, *args, **kwargs):
-        with open(table_path) as fp:
-            csvr = csv.reader(fp, delimiter=self.delimiter)
-            if self.header:
-                theader = next(csvr)
-                self.set_coli(theader)
-            for row in csvr:
-                audio_file_path = os.path.join(*[p.get_val(row) for p in self.audio_file_path])
-                self.all_audio_files.setdefault(audio_file_path, AudioFile(audio_file_path))
-                yield self.all_audio_files[audio_file_path]
+    # def get_audio_files(self, table_path, *args, **kwargs):
+    #     with open(table_path) as fp:
+    #         csvr = csv.reader(fp, delimiter=self.delimiter)
+    #         if self.header:
+    #             theader = next(csvr)
+    #             self.set_coli(theader)
+    #         for row in csvr:
+    #             audio_file_path = os.path.join(*[p.get_val(row) for p in self.audio_file_path])
+    #             self.all_audio_files.setdefault(audio_file_path, AudioFile(audio_file_path))
+    #             yield self.all_audio_files[audio_file_path]
 
 
 class BirdNetParser(TableParser):

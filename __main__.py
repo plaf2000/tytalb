@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+from functools import cached_property
 import subprocess
 from parsers import available_parsers, ap_names
 from generic_parser import TableParser
@@ -48,8 +50,10 @@ class LabelMapper:
             label = "Noise"
         return label
     
-
-                
+@dataclass
+class SegmentsWrapper:
+    segments: list[Segment] = []
+    audio_file: AudioFile | None = None
 
 
 class BirdNetTrainer:
@@ -77,58 +81,57 @@ class BirdNetTrainer:
                 if os.path.isfile(fpath) and self.parser.is_table(fpath):
                     self.tables_paths.append(fpath)
 
-        self.audio_files: dict[str, tuple[list[Segment], AudioFile | None]] = {}
+        self.audio_files: dict[str, SegmentsWrapper] = {}
+
+        prog_bar = ProgressBar("Reading tables", len(self.tables_paths))
         for table_path in self.tables_paths:
-            for rel_path, segment in zip(self.parser.get_audio_rel_no_ext_paths(table_path, self.tables_dir), self.parser.get_segments(table_path)):
-                segments, _ = self.audio_files.setdefault(rel_path, ([], None))
-                segments.append(segment)
-                
-        for k, v in self.audio_files.items():
-            segments, _ = v
-            self.audio_files[k] = sorted([s for s in segments], key=lambda seg: seg.tstart)
+            for rel_path, segment in zip(self.parser.get_audio_rel_no_ext_paths(table_path, self.tables_dir), 
+                                         self.parser.get_segments(table_path)):
+                self.audio_files.setdefault(rel_path, SegmentsWrapper()).segments.append(segment)
+        for v in self.audio_files.values():
+            v.segments = sorted(v.segments, key=lambda seg: seg.tstart)
+        prog_bar.terminate()
+
 
     @property
     def n_tables(self):
         return len(self.tables_paths)
     
-    @property
+    @cached_property
     def n_segments(self):
-        return len(self.segments)
+        return sum([len(af_wrap.segments) for af_wrap in self.audio_files.values()])
 
     def extract_for_training(self, audio_files_dir: str, audio_file_ext: str, export_dir: str, logger: Logger, **kwargs) -> dict[str, str | int | float]:
         logger.print("Input annotations' folder:", self.tables_dir)
         logger.print("Input audio folder:", audio_files_dir)
         logger.print("Output audio folder:", export_dir)
 
-        self.map_audiofile_segments: dict[str, list[Segment]] = {}
-        audiofiles: list[AudioFile] = []
-        prog_bar = ProgressBar("Reading tables", len(self.tables_paths))
-        for table_path in self.tables_paths:
-            audiofiles += self.parser.get_audio_files(table_path, self.tables_dir, audio_files_dir, audio_file_ext)
+
+        prog_bar = ProgressBar("Retrieving audio paths", self.n_segments)
+        for rel_path, af_wrap in self.audio_files.items():
+            path_no_ext = os.path.join(audio_files_dir, rel_path)
+            audio_path = ".".join([path_no_ext, audio_file_ext])
+            af_wrap.audio_file = AudioFile(audio_path)
             prog_bar.print(1)
         prog_bar.terminate()
+
 
         if "label_settings_path" in kwargs:
             prog_bar = ProgressBar("Changing labels", self.n_segments)
             label_mapper = LabelMapper(**kwargs)
-            for seg in self.segments:
-                seg.label = label_mapper.map(seg.label)
-                prog_bar.print(1)
+            for af_wrap in self.audio_files.values():
+                for seg in af_wrap.segments:
+                    seg.label = label_mapper.map(seg.label)
+                    prog_bar.print(1)
             prog_bar.terminate()
 
-        prog_bar = ProgressBar("Mapping annotations to audio files", self.n_segments)
-        for seg, af in zip(self.segments, audiofiles):
-            af.set_date(**kwargs)
-            self.map_audiofile_segments.setdefault(af, []).append(seg)
-            prog_bar.print(1)
-        prog_bar.terminate()
 
 
-        prog_bar = ProgressBar("Exporting segments and noise", len(segments))
+        prog_bar = ProgressBar("Exporting segments and noise", self.n_segments)
         proc_logger = ProcLogger(**kwargs)
-        logger.print("Found", len(self.map_audiofile_segments), "audio files.")
-        for af, segs in self.map_audiofile_segments.items():
-            af.export_all_birdnet(export_dir, segs, proc_logger=proc_logger, logger=logger, progress_bar=prog_bar, **kwargs)
+        logger.print("Found", len(self.audio_files), "audio files.")
+        for af_wrap in self.audio_files.values():
+            af_wrap.audio_file.export_all_birdnet(export_dir, af_wrap.segments, proc_logger=proc_logger, logger=logger, progress_bar=prog_bar, **kwargs)
         prog_bar.terminate()
 
 
