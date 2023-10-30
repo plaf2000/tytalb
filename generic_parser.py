@@ -1,7 +1,7 @@
 import fnmatch
 import os
 import csv
-from typing import Generator, IO
+from typing import Generator, IO, Callable, Any
 from dataclasses import dataclass
 from segment import Segment
 from audio_file import AudioFile
@@ -10,6 +10,7 @@ from audio_file import AudioFile
 class Column:
     colname: str = None
     colindex: int = None
+    
 
     def set_coli(self, header_row: list):
         """
@@ -21,7 +22,19 @@ class Column:
         """
         Given the row's cells as list, return the value of the corresponding column.
         """
-        return row[self.colindex]
+        return self.read_func(row[self.colindex])
+
+    def read_func(self, cell: str):
+        return cell
+
+class IntColumn(Column):
+    def read_func(self, cell:str):
+        return int(cell)
+    
+class FloatColumn(Column):
+    def read_func(self, cell:str):
+        return float(cell)
+
 
 @dataclass
 class TableParser:

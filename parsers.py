@@ -1,4 +1,4 @@
-from generic_parser import TableParser, Column
+from generic_parser import TableParser, Column, FloatColumn
 from segment import DurSegment, Segment
 from audio_file import AudioFile
 from inspect import signature
@@ -33,8 +33,8 @@ class SonicParser(TableParser):
     def __init__(self, 
         names = ["sonic-visualizer", "sv"],
         delimiter = ",",
-        tstart = Column("START", 0),
-        tend = Column("END", 1),
+        tstart = FloatColumn("START", 0),
+        tend = FloatColumn("END", 1),
         label = Column("LABEL", 4),
         segment_type = Segment,
         audio_file_path = None,
@@ -49,8 +49,8 @@ class AudacityParser(TableParser):
     def __init__(self, 
         names = ["audacity", "ac"],
         delimiter = "\t",
-        tstart = Column(colindex=0),
-        tend = Column(colindex=1),
+        tstart = FloatColumn(colindex=0),
+        tend = FloatColumn(colindex=1),
         label = Column(colindex=2),
         audio_file_path = None,
         segment_type = Segment,
@@ -68,8 +68,8 @@ class RavenParser(TableParser):
     def __init__(self, 
         names = ["raven", "rvn"],
         delimiter = "\t",
-        tstart = Column("Begin Time (s)", 3),
-        tend = Column("End Time (s)", 4),
+        tstart = FloatColumn("Begin Time (s)", 3),
+        tend = FloatColumn("End Time (s)", 4),
         label = Column("Annotation", 10),
         table_fnmatch = "*.selections.txt",
         segment_type = Segment,
@@ -83,8 +83,8 @@ class KaleidoscopeParser(TableParser):
     def __init__(self, 
         names = ["kaleidoscope", "ks"],
         delimiter = ",",
-        tstart = Column("OFFSET", 3),
-        tend = Column("DURATION", 4),
+        tstart = FloatColumn("OFFSET", 3),
+        tend = FloatColumn("DURATION", 4),
         label = Column("scientific_name", 5),
         table_fnmatch = "*.csv",
         segment_type = DurSegment,
@@ -128,8 +128,8 @@ class BirdNetParser(TableParser):
     def __init__(self, 
         names = ["birdnet", "bn"],
         delimiter = ",",
-        tstart = Column("start_time", 3),
-        tend = Column("end_time", 4),
+        tstart = FloatColumn("start_time", 3),
+        tend = FloatColumn("end_time", 4),
         label = Column("label", 6),
         table_fnmatch = "*.csv",
         segment_type = Segment,
@@ -149,3 +149,12 @@ available_parsers = [
 ap_names = []
 for ap in available_parsers:
     ap_names += ap().names
+
+def get_parser(table_format: str, **parser_kwargs):
+    table_format_name = table_format.lower()
+    table_parser: TableParser = None
+    for tp in available_parsers:
+        tp_init: TableParser = tp(**parser_kwargs)
+        if table_format_name in tp_init.names:
+            table_parser = tp_init
+    return table_parser

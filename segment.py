@@ -1,18 +1,39 @@
 from units import TimeUnit
 from variables import BIRDNET_AUDIO_DURATION
-from intervaltree import IntervalTree, Interval
+import  intervaltree as it
 
-class Segment(Interval):
+
+class Segment(it.Interval):
+    """
+    Extends the `intervaltree.Interval` class. Uses `bytearray` to represent the 
+    label string in the data, in order to make it mutable.
+    """
     tstart: TimeUnit
     tend: TimeUnit
-    label: str |None
+    label: str | None
 
-    def __init__(self, tstart_s: float, tend_s: float, label: str = None):
-        self.tstart = TimeUnit(float(tstart_s))
-        self.tend = TimeUnit(float(tend_s))
-        self.label = label 
+    def __new__(cls, tstart_s: float, tend_s: float, label: str | bytearray = ""):
+        if isinstance(label, str):
+            label = label.encode()
+        if label is None:
+            label = b""
+        return super(Segment, cls).__new__(cls, tstart_s, tend_s, bytearray(label))
 
-        super().__init__(self.tstart, self.tend, self.label)   
+    @property
+    def tstart(self):
+        return TimeUnit(self.begin)
+    
+    @property
+    def tend(self):
+        return TimeUnit(self.end)
+
+    @property
+    def label(self):
+        return self.data.decode()
+    
+    @label.setter
+    def label(self, l: str):
+        self.data[:] = l.encode()
         
     @property
     def dur(self) -> TimeUnit:
@@ -44,11 +65,19 @@ class Segment(Interval):
         return f"Segment{seg_name}: [{self.tstart.time_str(True)}, {self.tend.time_str(True)}]"
     
     @staticmethod
+    def from_interval(interval: it.Interval):
+        """
+        Create a segment from an a treeinterval Interval.
+        """
+        return Segment(interval.begin, interval.end, interval.data)
+
+    @staticmethod
     def get_intervaltree(segments: list['Segment']):
         """
         Returns the IntervalTree datastructure from a list of segments.
         """
-        return IntervalTree(segments)
+        return it.IntervalTree(segments)
+
     
 
 class DurSegment(Segment):

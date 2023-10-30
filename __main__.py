@@ -1,7 +1,7 @@
 from __future__ import annotations
 from functools import cached_property
 import subprocess
-from parsers import available_parsers, ap_names
+from parsers import ap_names, get_parser
 from generic_parser import TableParser
 from audio_file import AudioFile
 from loggers import ProcLogger, Logger, ProgressBar 
@@ -9,6 +9,7 @@ from variables import BIRDNET_AUDIO_DURATION, BIRDNET_SAMPLE_RATE, NOISE_LABEL
 from segment import Segment
 from argparse import ArgumentParser
 from datetime import datetime
+import pandas as pd
 import json
 import numpy as np
 import fnmatch
@@ -16,14 +17,6 @@ import time
 import re
 import os
 
-def get_parser(table_format: str, **parser_kwargs):
-    table_format_name = table_format.lower()
-    table_parser: TableParser = None
-    for tp in available_parsers:
-        tp_init: TableParser = tp(**parser_kwargs)
-        if table_format_name in tp_init.names:
-            table_parser = tp_init
-    return table_parser
 
 class LabelMapper:
     def __init__(self, label_settings_path: str, *args, **kwargs):
@@ -63,8 +56,8 @@ class BirdNetTrainer:
 
     def __init__(
             self,
-            table_format: str,
             tables_dir: str,
+            table_format: str,
             recursive_subfolders = True,
             **parser_kwargs
         ):
@@ -73,7 +66,7 @@ class BirdNetTrainer:
         self.tables_dir = tables_dir
         self.recursive_subfolders = recursive_subfolders
         if recursive_subfolders:
-            for dirpath, dirs, files in os.walk(self.tables_dir): 
+            for dirpath, dirs, files in os.walk(self.tables_dir):
                 for filename in fnmatch.filter(files, self.parser.table_fnmatch):
                     fpath = os.path.join(dirpath, filename)
                     self.tables_paths.append(fpath)
@@ -82,6 +75,9 @@ class BirdNetTrainer:
                 fpath = os.path.join(self.tables_dir, f)
                 if os.path.isfile(fpath) and self.parser.is_table(fpath):
                     self.tables_paths.append(fpath)
+
+        if len(self.tables_paths) == 0:
+            raise AttributeError("No annotations found in the provided folder.")
 
         self.audio_files: dict[str, SegmentsWrapper] = {}
 
@@ -142,7 +138,7 @@ class BirdNetTrainer:
 
 def validate(ground_truth: BirdNetTrainer, to_validate: BirdNetTrainer, binary=False, positive_labels=None):
 
-    all_rel_paths = set(ground_truth.audio_files.keys()) + set(to_validate.audio_files.keys())
+    all_rel_paths = set(ground_truth.audio_files.keys()) | set(to_validate.audio_files.keys())
 
     labels: set[str] = set()
 
@@ -157,7 +153,7 @@ def validate(ground_truth: BirdNetTrainer, to_validate: BirdNetTrainer, binary=F
 
     if binary and n_labels>2:
         if positive_labels is None:
-            raise Exception("Binary classification with more than one label! Please specify the positive label(s).")
+            raise AttributeError("Binary classification with more than one label! Please specify the positive label(s).")
         if isinstance(positive_labels, str):
             positive_labels = [positive_labels]
         for bnt in [ground_truth, to_validate]:
@@ -170,7 +166,7 @@ def validate(ground_truth: BirdNetTrainer, to_validate: BirdNetTrainer, binary=F
         labels = ["Positive", NOISE_LABEL]
         n_labels = 2           
     
-    index: dict[str, int]
+    index: dict[str, int] = {}
 
     for i, label in enumerate(labels):
         index[label] = i
@@ -195,7 +191,6 @@ def validate(ground_truth: BirdNetTrainer, to_validate: BirdNetTrainer, binary=F
             af_tv = to_validate.audio_files[rel_path]
 
         if not rel_path in ground_truth.audio_files:
-            # duration = af_tv.audio_file.duration
             for seg in af_tv.segments:
                 if seg.label != NOISE_LABEL:
                     set_both(NOISE_LABEL, seg.label, seg.dur)
@@ -221,26 +216,29 @@ def validate(ground_truth: BirdNetTrainer, to_validate: BirdNetTrainer, binary=F
 
 
         for seg_gt in segs_gt:
-            overlapping = segs_tv[seg_gt.begin, seg_gt.end]
+            seg_gt = Segment.from_interval(seg_gt)
+            overlapping = segs_tv[seg_gt.begin:seg_gt.end]
             if len(overlapping) == 0:
                 set_both(seg_gt.label, NOISE_LABEL, seg_gt.dur)
                 continue
 
             for seg_tv in overlapping:
+                seg_tv = Segment.from_interval(seg_tv)
                 set_both(seg_gt.label, seg_tv.label, seg_tv.overlapping_time(seg_gt))
             t = Segment.get_intervaltree(overlapping)
             t.merge_overlaps()
-            tot_overlapping = sum([s.overlapping_time(seg_gt) for s in t])
+            tot_overlapping = sum([Segment.from_interval(s).overlapping_time(seg_gt) for s in t])
             set_conf_time(seg_gt.label, NOISE_LABEL, seg_gt.dur - tot_overlapping)
 
         for seg_tv in segs_tv:
-            overlapping = segs_gt[seg_tv.begin, seg_tv.end]
+            seg_tv = Segment.from_interval(seg_tv)
+            overlapping = segs_gt[seg_tv.begin:seg_tv.end]
             if len(overlapping) == 0:
                 set_both(NOISE_LABEL, seg_tv.label, seg_gt.dur)
                 continue
             t = Segment.get_intervaltree(overlapping)
             t.merge_overlaps()
-            tot_overlapping = sum([s.overlapping_time(seg_gt) for s in t])
+            tot_overlapping = sum([Segment.from_interval(s).overlapping_time(seg_gt) for s in t])
             set_conf_time(NOISE_LABEL, seg_tv.label, seg_tv.dur - tot_overlapping)
     
     def stats(matrix):
@@ -249,16 +247,24 @@ def validate(ground_truth: BirdNetTrainer, to_validate: BirdNetTrainer, binary=F
         f1score = {}
         for i, label in enumerate(labels):
             tp = matrix[i,i]
-            mask = np.ones(matrix[i], np.bool_)
+            mask = np.ones_like(matrix[i], np.bool_)
             mask[i] = 0
             fp = np.sum(matrix[:, i] * mask)
             fn = np.sum(matrix[i, :] * mask)
-            precision[label] = tp / (tp + fp)
-            recall[label] = tp / (tp + fn)
-            f1score[label] =  2 * (precision[label] * recall[label]) / (precision[label] + recall[label])
-        return matrix, precision, recall, f1score
+            p = 0 if tp==0 else tp / (tp + fp)
+            r = 0 if tp==0 else tp / (tp + fn)
+            precision[label] = p
+            recall[label] = r
+            f1score[label] =  0 if p==0 and r==0 else 2 * (p * r) / (p + r)
+        df_matrix = pd.DataFrame(data=matrix, index=labels, columns=labels)
+        df_metrics =  pd.DataFrame(
+            {"precision": precision, "recall": recall, "f1 score": f1score},
+            index=labels,
+            columns=["precision","recall","f1 score"]
+        )
+        return df_matrix, df_metrics
 
-    return  labels, stats(conf_time_matrix), stats(conf_count_matrix)
+    return  stats(conf_time_matrix), stats(conf_count_matrix)
 
 
 
@@ -280,13 +286,13 @@ if __name__ == "__main__":
     """
 
     extract_parser = subparsers.add_parser("extract",
-                                           help="Extracts audio chunks from long aduio files using FFmpeg based on the given parser annotation." \
+                                           help="Extracts audio chunks from long audio files using FFmpeg based on the given parser annotation." \
                                                 "the result consists of multiple audio file, each 3s long \"chunk\", each in the corresponding." \
                                                 "labelled folder, which can be used to train the BirdNet custom classifier.")
     
     extract_parser.add_argument("-i", "--input-dir",
                                 dest="tables_dir",
-                                help="Path to the file or folder of the (manual) annotations.",
+                                help="Path to the folder of the (manual) annotations.",
                                 default=".")
     
     extract_parser.add_argument("-re", "--recursive",
@@ -299,20 +305,20 @@ if __name__ == "__main__":
                                 dest="table_format",
                                 choices=ap_names,
                                 required=True,
-                                help="Annotation format to read the data inside the tables.")
+                                help="Annotation format.")
     
     extract_parser.add_argument("-a", "--audio-root-dir",
                                 dest="audio_files_dir",
-                                help="Path to the root directory of the audio files. Default=current working dir.", default=".")
+                                help="Path to the root directory of the audio files (default=current working dir).", default=".")
     
     extract_parser.add_argument("-ie", "--audio-input-ext",
                                 dest="audio_input_ext",
                                 required=True,
-                                help="Key-sensitive extension of the input audio files.", default="wav")
+                                help="Key-sensitive extension of the input audio files (default=wav).", default="wav")
     
     extract_parser.add_argument("-oe", "--audio-output-ext",
                                 dest="audio_output_ext",
-                                help="Key-sensitive extension of the output audio files.", default="flac")
+                                help="Key-sensitive extension of the output audio files (default=flac).", default="flac")
     
 
     extract_parser.add_argument("-o", "--output-dir",
@@ -341,7 +347,47 @@ if __name__ == "__main__":
     """
         Parse arguments to train the model.
     """
-    extract_parser = subparsers.add_parser("train")
+    train_parser = subparsers.add_parser("train")
+
+
+
+    """
+        Parse arguments to validate BirdNet predictions.
+    """
+    validate_parser = subparsers.add_parser("validate")
+    validate_parser.add_argument("-gt", "--ground-truth",
+                                dest="tables_dir_gt",
+                                help="Path to the folder of the ground truth annotations (default=current working dir).",
+                                default=".")
+    
+    validate_parser.add_argument("-tv", "--to-validate",
+                            dest="tables_dir_tv",
+                            help="Path to the folder of the annotations to validate (default=current working dir).",
+                            default=".")
+    
+    validate_parser.add_argument("-fgt", "--annotation-format-ground-truth",
+                                dest="table_format_gt",
+                                required=True,
+                                choices=ap_names,
+                                help="Annotation format for ground truth data.")
+
+    validate_parser.add_argument("-ftv", "--annotation-format-to-validate",
+                                dest="table_format_tv",
+                                choices=ap_names,
+                                help="Annotation format for data to validate (default=raven).",
+                                default="raven")
+    
+    validate_parser.add_argument("-o", "--output-dir",
+                                dest="output_dir",
+                                help="Path to the output directory (default=current working dir).",
+                                default=".")
+    
+    validate_parser.add_argument("-re", "--recursive",
+                                type=bool,
+                                dest="recursive",
+                                help="Wether to look for tables inside the root directory recursively or not (default=True).",
+                                default=True)
+    
 
     
     args, custom_args = arg_parser.parse_known_args()
@@ -363,8 +409,8 @@ if __name__ == "__main__":
 
         try:
             bnt = BirdNetTrainer(
-                table_format=args.table_format,
                 tables_dir=args.tables_dir,
+                table_format=args.table_format,
                 recursive_subfolders=args.recursive,
             )\
             .extract_for_training(
@@ -388,5 +434,35 @@ if __name__ == "__main__":
             logger.print_exception(e)  
     elif args.action == "train":
         subprocess.run(["python3", "BirdNET-Analyzer/train.py"] + custom_args)
+    elif args.action=="validate":
+        print(args.tables_dir_gt)
+        bnt_gt = BirdNetTrainer(
+            tables_dir=args.tables_dir_gt,
+            table_format=args.table_format_gt,
+            recursive_subfolders=args.recursive
+
+        )
+
+        bnt_tv = BirdNetTrainer(
+            tables_dir=args.tables_dir_tv,
+            table_format=args.table_format_tv,
+            recursive_subfolders=args.recursive
+        )
+
+        stats_time, stats_count =  validate(bnt_gt, bnt_tv)
+
+
+        def save_stats(stats: tuple[pd.DataFrame, pd.DataFrame], suffix: str):
+            fname = lambda f: os.path.join(args.output_dir, f"{f}_{suffix}.csv")
+            df_matrix, df_metrics  = stats
+            df_matrix.to_csv(fname("confusion_matrix"))
+            df_metrics.to_csv(fname("validation_metrics"))
+        
+        save_stats(stats_time, "time")
+        save_stats(stats_count, "count")
+
+    
+
+        
 
 
