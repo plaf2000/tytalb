@@ -1,7 +1,8 @@
 from units import TimeUnit
 from variables import BIRDNET_AUDIO_DURATION
+from intervaltree import IntervalTree, Interval
 
-class Segment:
+class Segment(Interval):
     tstart: TimeUnit
     tend: TimeUnit
     label: str |None
@@ -9,7 +10,9 @@ class Segment:
     def __init__(self, tstart_s: float, tend_s: float, label: str = None):
         self.tstart = TimeUnit(float(tstart_s))
         self.tend = TimeUnit(float(tend_s))
-        self.label = label    
+        self.label = label 
+
+        super().__init__(self.tstart, self.tend, self.label)   
         
     @property
     def dur(self) -> TimeUnit:
@@ -35,13 +38,17 @@ class Segment:
     def overlapping_perc(self, other: 'Segment'):
         return self.overlapping_time(other)/self.dur
     
-    def overlaps(self, other: 'Segment'):
-        return self.overlapping_time(other) > 0
 
     def __str__(self):
         seg_name = f" \"{self.label}\"" if self.label is not None else ""
         return f"Segment{seg_name}: [{self.tstart.time_str(True)}, {self.tend.time_str(True)}]"
     
+    @staticmethod
+    def get_intervaltree(segments: list['Segment']):
+        """
+        Returns the IntervalTree datastructure from a list of segments.
+        """
+        return IntervalTree(segments)
     
 
 class DurSegment(Segment):

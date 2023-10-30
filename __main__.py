@@ -140,7 +140,7 @@ class BirdNetTrainer:
         validate(ground_truth=self, to_validate=other, *args, **kwargs) 
     
 
-def validate(ground_truth: BirdNetTrainer, to_validate: BirdNetTrainer, binary=False, positive_label=None):
+def validate(ground_truth: BirdNetTrainer, to_validate: BirdNetTrainer, binary=False, positive_labels=None):
 
     all_rel_paths = set(ground_truth.audio_files.keys()) + set(to_validate.audio_files.keys())
 
@@ -152,13 +152,23 @@ def validate(ground_truth: BirdNetTrainer, to_validate: BirdNetTrainer, binary=F
                 labels.add(seg.label)
     
     labels.add(NOISE_LABEL)
-
     labels = sorted(labels)
-
     n_labels = len(labels)
 
     if binary and n_labels>2:
-        raise Exception("Binary classification with more than one label! Please specify the positive label.")
+        if positive_labels is None:
+            raise Exception("Binary classification with more than one label! Please specify the positive label(s).")
+        if isinstance(positive_labels, str):
+            positive_labels = [positive_labels]
+        for bnt in [ground_truth, to_validate]:
+            for af_wrapper in bnt.audio_files.values():
+                for seg in af_wrapper.segments:
+                    if seg.label not in positive_labels:
+                        seg.label = NOISE_LABEL
+                    else:
+                        seg.label = "Positive"
+        labels = ["Positive", NOISE_LABEL]
+        n_labels = 2           
     
     index: dict[str, int]
 
@@ -166,6 +176,15 @@ def validate(ground_truth: BirdNetTrainer, to_validate: BirdNetTrainer, binary=F
         index[label] = i
     
     conf_time_matrix = np.zeros((n_labels, n_labels), np.float64)
+    conf_count_matrix = np.zeros((n_labels, n_labels), np.float64)
+
+    def set_conf_time(label_truth, label_prediction, duration):
+        conf_time_matrix[index[label_truth], index[label_prediction]] += duration
+    
+    def set_both(label_truth, label_prediction, duration):
+        set_conf_time(label_truth, label_prediction, duration)
+        conf_count_matrix[index[label_truth], index[label_prediction]] += 1
+
                
     for rel_path in all_rel_paths:
         af_gt, af_tv = None, None
@@ -178,12 +197,14 @@ def validate(ground_truth: BirdNetTrainer, to_validate: BirdNetTrainer, binary=F
         if not rel_path in ground_truth.audio_files:
             # duration = af_tv.audio_file.duration
             for seg in af_tv.segments:
-                conf_time_matrix[index[NOISE_LABEL], index[seg.label]] = seg.dur
+                if seg.label != NOISE_LABEL:
+                    set_both(NOISE_LABEL, seg.label, seg.dur)
             continue
         
         if not rel_path in to_validate.audio_files:
             for seg in af_gt.segments:
-                conf_time_matrix[index[seg.label], index[NOISE_LABEL]] = seg.dur
+                if seg.label != NOISE_LABEL:
+                    set_both(seg.label, NOISE_LABEL, seg.dur)
             continue
     
         
@@ -194,37 +215,33 @@ def validate(ground_truth: BirdNetTrainer, to_validate: BirdNetTrainer, binary=F
         #     duration = af_tv.audio_file.duration
 
 
-        segs_gt = af_gt.segments.copy()
-        segs_tv = sorted(af_tv.segments, key=lambda seg: seg.tend)
-        # overlaps = np.zeros(len(seg_gt), dtype=np.float64)
+        segs_gt = Segment.get_intervaltree([s for s in af_gt.segments if s.label!=NOISE_LABEL])
+        segs_tv = Segment.get_intervaltree([s for s in af_tv.segments if s.label!=NOISE_LABEL])
+
+
 
         for seg_gt in segs_gt:
-            while segs_tv and segs_tv[0].tend < seg_gt.tstart:
-                segs_tv.pop(0)
-        
-            tot_overlapping = 0
-            for seg_tv in enumerate(segs_tv):
-                if seg_gt.overlaps(seg_tv):
-                    ot = seg_tv.overlapping_time(seg_gt)
-                    conf_time_matrix[index[seg_gt.label], index[seg_tv.label]] += ot
-                    tot_overlapping+=ot
-            conf_time_matrix[index[seg_gt.label], index[NOISE_LABEL]] += seg_gt.dur - tot_overlapping
+            overlapping = segs_tv[seg_gt.begin, seg_gt.end]
+            if len(overlapping) == 0:
+                set_both(seg_gt.label, NOISE_LABEL, seg_gt.dur)
+                continue
 
-        segs_gt = sorted(af_gt.segments, key=lambda seg: seg.tend)
-        segs_tv = af_tv.segments.copy()
+            for seg_tv in overlapping:
+                set_both(seg_gt.label, seg_tv.label, seg_tv.overlapping_time(seg_gt))
+            t = Segment.get_intervaltree(overlapping)
+            t.merge_overlaps()
+            tot_overlapping = sum([s.overlapping_time(seg_gt) for s in t])
+            set_conf_time(seg_gt.label, NOISE_LABEL, seg_gt.dur - tot_overlapping)
 
-        # TODO: Store the overlappings somewhere, so there's no need to reiterate ad 
         for seg_tv in segs_tv:
-            while segs_gt and segs_gt[0].tend < seg_tv.tstart:
-                segs_gt.pop(0)
-
-            tot_overlapping = 0
-            for seg_gt in segs_gt:
-                if seg_gt.overlaps(seg_tv):
-                    ot = seg_gt.overlapping_time(seg_tv)
-                    conf_time_matrix[index[seg_gt.label], index[seg_tv.label]] += ot
-                    tot_overlapping+=ot
-            conf_time_matrix[index[NOISE_LABEL], index[seg_gt.label]] += seg_tv.dur - tot_overlapping
+            overlapping = segs_gt[seg_tv.begin, seg_tv.end]
+            if len(overlapping) == 0:
+                set_both(NOISE_LABEL, seg_tv.label, seg_gt.dur)
+                continue
+            t = Segment.get_intervaltree(overlapping)
+            t.merge_overlaps()
+            tot_overlapping = sum([s.overlapping_time(seg_gt) for s in t])
+            set_conf_time(NOISE_LABEL, seg_tv.label, seg_tv.dur - tot_overlapping) 
 
 
 
