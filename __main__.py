@@ -241,7 +241,24 @@ def validate(ground_truth: BirdNetTrainer, to_validate: BirdNetTrainer, binary=F
             t = Segment.get_intervaltree(overlapping)
             t.merge_overlaps()
             tot_overlapping = sum([s.overlapping_time(seg_gt) for s in t])
-            set_conf_time(NOISE_LABEL, seg_tv.label, seg_tv.dur - tot_overlapping) 
+            set_conf_time(NOISE_LABEL, seg_tv.label, seg_tv.dur - tot_overlapping)
+    
+    def stats(matrix):
+        precision = {}
+        recall = {}
+        f1score = {}
+        for i, label in enumerate(labels):
+            tp = matrix[i,i]
+            mask = np.ones(matrix[i], np.bool_)
+            mask[i] = 0
+            fp = np.sum(matrix[:, i] * mask)
+            fn = np.sum(matrix[i, :] * mask)
+            precision[label] = tp / (tp + fp)
+            recall[label] = tp / (tp + fn)
+            f1score[label] =  2 * (precision[label] * recall[label]) / (precision[label] + recall[label])
+        return matrix, precision, recall, f1score
+
+    return  labels, stats(conf_time_matrix), stats(conf_count_matrix)
 
 
 
