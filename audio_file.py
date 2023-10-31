@@ -85,7 +85,11 @@ class AudioFile:
         
         if resample is not None and isinstance(resample, int):
             args += ["-ar", str(resample)]
-            args += ["-osr", str(resample)]
+
+        ext = out_path.split(".")[-1]
+
+        if ext.lower() == "flac":
+            args += ["-c:a", "flac"]
 
 
         args.append(out_path)
@@ -110,6 +114,7 @@ class AudioFile:
             segment_list_prefix: str = None,
             overwrite: bool =True,
             resample: int = None,
+            min_seg_duration: float = None,
             **kwargs
         ) -> subprocess.CompletedProcess:
 
@@ -144,9 +149,11 @@ class AudioFile:
         
         if resample is not None and isinstance(resample, int):
             args += ["-ar", str(resample)]
-            args += ["-osr", str(resample)]
+            # args += ["-osr", str(resample)]
 
-        
+        if min_seg_duration is not None and isinstance(min_seg_duration, float):
+            args += ["-min_seg_duration", str(min_seg_duration)]
+
 
         args.append(out_path)
 
@@ -158,7 +165,44 @@ class AudioFile:
     
 
         return subprocess.run(args, capture_output=True)
+    
+    def rename_or_delete_segments(
+            self,
+            base_path: str,
+            label: str,
+            unsegmented_fpath: str,
+            segment_list: str = None,
+            tstart: TimeUnit = None,
+            **kwargs,
+        ):
 
+        with open(segment_list) as fp:
+            csv_reader = csv.reader(fp)
+            for row in csv_reader:
+                tstart_f = TimeUnit(row[1])
+                tend_f = TimeUnit(row[2])
+                tstart_abs = tstart + tstart_f
+                tend_abs = tstart + tend_f
+                fpath = row[0]
+                ext = fpath.split(".")[-1]
+                
+
+                if tend_f - tstart_f < BIRDNET_AUDIO_DURATION:
+                    if tend_f - BIRDNET_AUDIO_DURATION > 0:
+                        tstart_f = tend_f - BIRDNET_AUDIO_DURATION
+                        tend_f = TimeUnit(row[2])
+                        tstart_abs = tstart + tstart_f
+                        tend_abs = tstart + tend_f
+                        seg = Segment(tstart_abs, tend_abs, label)
+                        out_path = self.segment_path(base_path, seg, ext)
+                        self.export_segment_ffmpeg(unsegmented_fpath, out_path, ss = tstart_f, to=tend_f)
+                    os.remove(fpath)
+                    continue
+
+                seg = Segment(tstart_abs, tend_abs, label)
+                out_path = self.segment_path(base_path, seg, ext)
+                self.export_segment_ffmpeg(unsegmented_fpath, out_path)
+                os.remove(fpath)
 
 
     
@@ -226,6 +270,8 @@ class AudioFile:
         tstamps = np.flatnonzero(np.abs(diff) == 1)
 
         n_labelled_chunks = 0
+        basepath_noise = os.path.join(base_path, NOISE_LABEL)
+
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             tmppath = lambda fname: os.path.join(tmpdirname, fname)
@@ -261,7 +307,7 @@ class AudioFile:
                     tstart_f = TimeUnit(row[1])
                     tend_f = TimeUnit(row[2])
 
-                    if (tend_f-tstart_f).s < 3:
+                    if (tend_f-tstart_f) < BIRDNET_AUDIO_DURATION:
                         continue
 
                     fpath = row[0]
@@ -304,7 +350,6 @@ class AudioFile:
                                 f"Error while exporting {seg}:"
                             )
 
-
                             # Rename the files with more readable names (start and end time/date)
                             out_path = lambda i: f"{base_out_path}_{i:04d}.{splits[-1]}"
                             def new_out_path(sub_seg: Segment):
@@ -327,7 +372,8 @@ class AudioFile:
                                     os.remove(out_path(i))
                                     proc_logger.print_success(f"Removed {out_path(i)}, since it already exists")
                                     continue
-                                os.replace(out_path(i), noutp)
+                                self.export_segment_ffmpeg(out_path(i), noutp)
+                                os.remove(out_path(i))
                                 i+=1
                             proc_logger.print_success(f"Renamed {i} segments.")
 
@@ -399,16 +445,25 @@ class AudioFile:
                         # as noise for training.
 
                         basename_noise_split = os.path.basename(fpath).split(".")
-                        basepath_noise = os.path.join(base_path, NOISE_LABEL)
                         os.makedirs(basepath_noise, exist_ok=True)
                         basepath_out = os.path.join(basepath_noise, ".".join(basename_noise_split[:-1]))
 
-                        out_path = f"{basepath_out}%04d.{audio_format}"
+
+                        # out_path = f"{basepath_out}%04d.{audio_format}"
+                        out_path = f"{basepath_out}_%04d.wav"
 
                         to = (tend_f - tstart_f) - ((tend_f - tstart_f) % BIRDNET_AUDIO_DURATION)
 
-                        
-                        proc = self.export_segments_ffmpeg(path=fpath, to=to, times=BIRDNET_AUDIO_DURATION.s, out_path=out_path, **kwargs)
+
+
+                        proc = self.export_segments_ffmpeg(
+                            path=fpath,
+                            to=to,
+                            times=BIRDNET_AUDIO_DURATION.s,
+                            out_path=out_path,
+                            min_seg_duration=BIRDNET_AUDIO_DURATION.s,
+                            **kwargs
+                        )
                         seg_noise = Segment(tstart_f, tend_f, NOISE_LABEL)
                         proc_logger.log_process(
                             proc,
@@ -416,10 +471,27 @@ class AudioFile:
                             f"Error while exporting {seg_noise} into segments:"
                         )
 
-                        noise_chunks += int(to // BIRDNET_AUDIO_DURATION)
+                        self.export_segment_ffmpeg(out_path(i), noutp)
 
-                        # TODO: Change the noise filenames to more readable ones.                    
+                        with open(listpath) as fp:
+                csv_reader = csv.reader(fp)
 
+                for row in csv_reader:
+
+
+                        # # Remove chunks with 0 length
+                        # noise_chunks += n_new_chunks
+                        # n_empty_chunks =  - noise_chunks
+                        # for empty_f in os.listdir(basepath_noise)[-n_empty_chunks:]:
+                        #     fp = os.path.join(basepath_noise, empty_f)
+                        #     os.remove(fp)
+
+
+                        # TODO: Change the noise filenames to more readable ones. 
+                                           
+
+
+        noise_chunks = len(os.listdir(basepath_noise))
         logger.print(
             f"{self.path}:",
             n_segments_original,

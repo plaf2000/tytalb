@@ -91,6 +91,7 @@ class ProcLogger:
     def log_process(self, process: subprocess.CompletedProcess, success_message: str, error_message: str) -> bool:
         try:
             process.check_returncode()
+            self.success_logger.print(process.args)
             self.success_logger.print(success_message)
             self.successes += 1
             return True

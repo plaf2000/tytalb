@@ -114,7 +114,7 @@ class BirdNetTrainer:
         prog_bar.terminate()
 
 
-        if "label_settings_path" in kwargs:
+        if "label_settings_path" in kwargs and os.path.isfile(kwargs["label_settings_path"]):
             prog_bar = ProgressBar("Changing labels", self.n_segments)
             label_mapper = LabelMapper(**kwargs)
             for af_wrap in self.audio_files.values():
@@ -398,8 +398,7 @@ if __name__ == "__main__":
         export_dir = os.path.join(args.export_dir, datetime.utcnow().strftime("%Y%m%d_%H%M%SUTC"))
         os.mkdir(export_dir)
         
-        # export_dir =args.export_dir
-        
+        # export_dir =args.export_dir       
 
         logger = Logger(logfile_path=os.path.join(export_dir, "log.txt"))
 
@@ -433,7 +432,7 @@ if __name__ == "__main__":
             print(f"Check {logger.logfile_path} for more information.")
             logger.print_exception(e)  
     elif args.action == "train":
-        subprocess.run(["python3", "BirdNET-Analyzer/train.py"] + custom_args)
+        subprocess.run(["python", "BirdNET-Analyzer/train.py"] + custom_args)
     elif args.action=="validate":
         print(args.tables_dir_gt)
         bnt_gt = BirdNetTrainer(
