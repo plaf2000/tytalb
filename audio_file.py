@@ -34,7 +34,9 @@ class AudioFile:
         if not os.path.isfile(path):
             raise FileNotFoundError(f"File {path} not found.")
         self.path = path
-        self.basename = os.path.basename(path).split(".")[0]
+        self.splits = os.path.basename(path).split(".")
+        self.basename = self.splits[0]
+        self.ext = self.splits[-1]
         self.duration = sf.info(self.path).duration
         self.date_time = None
     
@@ -88,11 +90,7 @@ class AudioFile:
             args += ["-ar", str(resample)]
 
         if codec is not None and isinstance(codec, str):
-            args += ["-c:a", codec]
-
-        ext = out_path.split(".")[-1]
-
-       
+            args += ["-c:a", codec]      
 
 
 
@@ -207,8 +205,15 @@ class AudioFile:
 
                 seg = Segment(tstart_abs, tend_abs, label)
                 out_path = self.segment_path(base_path, seg, ext)
+                if "wav" == ext.lower():
+                    os.replace(fpath, out_path)
+                    continue
+                # If the output audio is not wav, a rencode is needed in order
+                # to konw the duration. 
+                # As a result, this might take longer.
                 self.export_segment_ffmpeg(fpath, out_path)
                 os.remove(fpath)
+        os.remove(segment_list)
 
     
     def export_all_birdnet(
@@ -368,50 +373,6 @@ class AudioFile:
                             )
 
                             self.rename_or_delete_segments(base_path, seg.label, fpath, temp_seglist, tstart_f)
-
-                            # # Rename the files with more readable names (start and end time/date)
-                            # out_path = lambda i: f"{base_out_path}_{i:04d}.{splits[-1]}"
-                            # def new_out_path(sub_seg: Segment):
-                            #     return self.segment_path(base_path, sub_seg, audio_format)
-                            
-                            # i = 0
-                            # removed_last = False
-                            # while os.path.isfile(out_path(i)):
-                            #     tstart_seg = i * BIRDNET_AUDIO_DURATION + seg.tstart
-                            #     tend_seg = tstart_seg + BIRDNET_AUDIO_DURATION
-                            #     if  tend_seg > seg.tend:
-                            #         # Remove segment at the end that is shorter than birdnet duration
-                            #         os.remove(out_path(i))
-                            #         proc_logger.print_success(f"Removed {out_path(i)}, since shorter than {BIRDNET_AUDIO_DURATION.s}s")
-                            #         removed_last = True
-                            #         break
-                            #     # Rename files
-                            #     noutp = new_out_path(Segment(tstart_seg, tend_seg, seg.label))
-                            #     if os.path.isfile(noutp):
-                            #         os.remove(out_path(i))
-                            #         proc_logger.print_success(f"Removed {out_path(i)}, since it already exists")
-                            #         continue
-                            #     self.export_segment_ffmpeg(out_path(i), noutp)
-                            #     os.remove(out_path(i))
-                            #     i+=1
-                            # proc_logger.print_success(f"Renamed {i} segments.")
-
-                            # # Export the very last segment
-                            # to = seg.tend - tstart_f
-                            # ss = to - BIRDNET_AUDIO_DURATION
-
-                            # if removed_last:
-                            #     sub_seg = Segment(ss + tstart_f, to + tstart_f, seg.label)
-                            #     out_path = new_out_path(sub_seg)
-                            #     if not os.path.isfile(out_path):
-                            #         proc = self.export_segment_ffmpeg(path=fpath, ss=ss, to=to, out_path=out_path, **kwargs)
-                            #         if proc_logger.log_process(
-                            #             proc,
-                            #             f"{sub_seg} from {seg} in file {self.path} exported to: {out_path}",
-                            #             f"Error while exporting {seg}:"
-                            #         ):
-                            #             i+=1
-                            # n_labelled_chunks += i    
                             
 
                         else:
@@ -499,17 +460,6 @@ class AudioFile:
                             temp_seglist,
                             tstart_f,
                         )
-
-
-                        # # Remove chunks with 0 length
-                        # noise_chunks += n_new_chunks
-                        # n_empty_chunks =  - noise_chunks
-                        # for empty_f in os.listdir(basepath_noise)[-n_empty_chunks:]:
-                        #     fp = os.path.join(basepath_noise, empty_f)
-                        #     os.remove(fp)
-
-
-                        # TODO: Change the noise filenames to more readable ones. 
                                            
 
 

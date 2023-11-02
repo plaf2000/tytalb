@@ -44,16 +44,13 @@ class LabelMapper:
         return label
     
 class SegmentsWrapper:
-    segments: list[Segment]
-    audio_file: AudioFile | None
-
-    def __init__(self, segments  = [], audio_file = None):
-        self.segments = segments
-        self.audio_file = audio_file
+    def __init__(self, segments: list[Segment] | None  = None, audio_file: AudioFile | None = None):
+        if segments is None:
+            segments = []    
+        self.segments: list[Segment] = segments
+        self.audio_file: AudioFile | None = audio_file
 
 class BirdNetTrainer:
-    tables_paths: list = []
-
     def __init__(
             self,
             tables_dir: str,
@@ -65,6 +62,8 @@ class BirdNetTrainer:
         self.parser = get_parser(table_format, **parser_kwargs)
         self.tables_dir = tables_dir
         self.recursive_subfolders = recursive_subfolders
+        self.tables_paths: list = []
+
         if recursive_subfolders:
             for dirpath, dirs, files in os.walk(self.tables_dir):
                 for filename in fnmatch.filter(files, self.parser.table_fnmatch):
@@ -79,7 +78,7 @@ class BirdNetTrainer:
         if len(self.tables_paths) == 0:
             raise AttributeError("No annotations found in the provided folder.")
 
-        self.audio_files: dict[str, SegmentsWrapper] = {}
+        self.audio_files: dict[str, SegmentsWrapper] = dict()
 
         prog_bar = ProgressBar("Reading tables", len(self.tables_paths))
         for table_path in self.tables_paths:
@@ -89,6 +88,7 @@ class BirdNetTrainer:
         for v in self.audio_files.values():
             v.segments = sorted(v.segments, key=lambda seg: seg.tstart)
         prog_bar.terminate()
+
 
 
     @property
@@ -125,7 +125,7 @@ class BirdNetTrainer:
 
 
 
-        prog_bar = ProgressBar("Exporting segments and noise", self.n_segments)
+        prog_bar = ProgressBar("Exporting segments", self.n_segments)
         proc_logger = ProcLogger(**kwargs)
         logger.print("Found", len(self.audio_files), "audio files.")
         for af_wrap in self.audio_files.values():
@@ -142,10 +142,13 @@ def validate(ground_truth: BirdNetTrainer, to_validate: BirdNetTrainer, binary=F
 
     labels: set[str] = set()
 
+    # Union the labels in ground truth and set to validate
     for bnt in [ground_truth, to_validate]:
         for af_wrapper in bnt.audio_files.values():
             for seg in af_wrapper.segments:
                 labels.add(seg.label)
+
+
     
     labels.add(NOISE_LABEL)
     labels = sorted(labels)
@@ -159,65 +162,69 @@ def validate(ground_truth: BirdNetTrainer, to_validate: BirdNetTrainer, binary=F
         for bnt in [ground_truth, to_validate]:
             for af_wrapper in bnt.audio_files.values():
                 for seg in af_wrapper.segments:
+                    # Label the positive segments as "positive" and the other with `NOISE_LABEL`
                     if seg.label not in positive_labels:
                         seg.label = NOISE_LABEL
                     else:
                         seg.label = "Positive"
         labels = ["Positive", NOISE_LABEL]
-        n_labels = 2           
+        n_labels = len(labels)          
     
     index: dict[str, int] = {}
 
+    # Map label to the row/column of the confusion matrix
     for i, label in enumerate(labels):
         index[label] = i
     
+    # Confusion matrices for time and count
     conf_time_matrix = np.zeros((n_labels, n_labels), np.float64)
     conf_count_matrix = np.zeros((n_labels, n_labels), np.float64)
 
+    # Shortcuts for setting the confusion matrices
     def set_conf_time(label_truth, label_prediction, duration):
         conf_time_matrix[index[label_truth], index[label_prediction]] += duration
     
     def set_both(label_truth, label_prediction, duration):
         set_conf_time(label_truth, label_prediction, duration)
+        # If there is some overlap, we add one to the count
         conf_count_matrix[index[label_truth], index[label_prediction]] += 1
 
                
     for rel_path in all_rel_paths:
         af_gt, af_tv = None, None
+        # Get the audio file for the ground truth
         if rel_path in ground_truth.audio_files:
             af_gt = ground_truth.audio_files[rel_path]
 
+        # Get the audio file for the validation
         if rel_path in to_validate.audio_files:
             af_tv = to_validate.audio_files[rel_path]
 
+        # If there are no labels in the ground truth, there are only FP
         if not rel_path in ground_truth.audio_files:
             for seg in af_tv.segments:
                 if seg.label != NOISE_LABEL:
                     set_both(NOISE_LABEL, seg.label, seg.dur)
             continue
         
+        # If there are no labels in the validation, there are only FN
         if not rel_path in to_validate.audio_files:
             for seg in af_gt.segments:
                 if seg.label != NOISE_LABEL:
                     set_both(seg.label, NOISE_LABEL, seg.dur)
             continue
-    
-        
-        # if af_gt.audio_file is not None:
-        #     duration = af_gt.audio_file.duration
-        
-        # elif af_tv.audio_file is not None:
-        #     duration = af_tv.audio_file.duration
 
 
         segs_gt = Segment.get_intervaltree([s for s in af_gt.segments if s.label!=NOISE_LABEL])
         segs_tv = Segment.get_intervaltree([s for s in af_tv.segments if s.label!=NOISE_LABEL])
-
+    
 
 
         for seg_gt in segs_gt:
             seg_gt = Segment.from_interval(seg_gt)
+
             overlapping = segs_tv[seg_gt.begin:seg_gt.end]
+
             if len(overlapping) == 0:
                 set_both(seg_gt.label, NOISE_LABEL, seg_gt.dur)
                 continue
@@ -234,6 +241,7 @@ def validate(ground_truth: BirdNetTrainer, to_validate: BirdNetTrainer, binary=F
             seg_tv = Segment.from_interval(seg_tv)
             overlapping = segs_gt[seg_tv.begin:seg_tv.end]
             if len(overlapping) == 0:
+                print(seg_tv)
                 set_both(NOISE_LABEL, seg_tv.label, seg_gt.dur)
                 continue
             t = Segment.get_intervaltree(overlapping)
@@ -249,14 +257,15 @@ def validate(ground_truth: BirdNetTrainer, to_validate: BirdNetTrainer, binary=F
             tp = matrix[i,i]
             mask = np.ones_like(matrix[i], np.bool_)
             mask[i] = 0
-            fp = np.sum(matrix[:, i] * mask)
-            fn = np.sum(matrix[i, :] * mask)
+            fp = np.dot(matrix[:, i], mask)
+            fn = np.dot(matrix[i, :], mask)
             p = 0 if tp==0 else tp / (tp + fp)
             r = 0 if tp==0 else tp / (tp + fn)
             precision[label] = p
             recall[label] = r
             f1score[label] =  0 if p==0 and r==0 else 2 * (p * r) / (p + r)
         df_matrix = pd.DataFrame(data=matrix, index=labels, columns=labels)
+        df_matrix.index.name = "True\\Prediction"
         df_metrics =  pd.DataFrame(
             {"precision": precision, "recall": recall, "f1 score": f1score},
             index=labels,
@@ -375,7 +384,7 @@ if __name__ == "__main__":
                                 dest="table_format_tv",
                                 choices=ap_names,
                                 help="Annotation format for data to validate (default=raven).",
-                                default="raven")
+                                default="birdnet_raven")
     
     validate_parser.add_argument("-o", "--output-dir",
                                 dest="output_dir",
@@ -434,7 +443,6 @@ if __name__ == "__main__":
     elif args.action == "train":
         subprocess.run(["python", "BirdNET-Analyzer/train.py"] + custom_args)
     elif args.action=="validate":
-        print(args.tables_dir_gt)
         bnt_gt = BirdNetTrainer(
             tables_dir=args.tables_dir_gt,
             table_format=args.table_format_gt,

@@ -61,8 +61,6 @@ class AudacityParser(TableParser):
         super().__init__(**collect_args(locals())) 
 
 
-    
-
 
 class RavenParser(TableParser): 
     def __init__(self, 
@@ -124,7 +122,22 @@ class KaleidoscopeParser(TableParser):
     #             yield self.all_audio_files[audio_file_path]
 
 
-class BirdNetParser(TableParser):
+class BirdNetRavenParser(RavenParser):
+    def __init__(self, 
+        names = ["birdnet_raven", "bnrv"],
+        delimiter = "\t",
+        tstart = FloatColumn("Begin Time (s)", 3),
+        tend = FloatColumn("End Time (s)", 4),
+        label = Column("Species Code", 10),
+        table_fnmatch = "*.BirdNET.selection.table.txt",
+        segment_type = Segment,
+        **kwargs
+    ):
+        super().__init__(**collect_args(locals())) 
+    
+
+
+class BirdNetCSVParser(TableParser):
     def __init__(self, 
         names = ["birdnet", "bn"],
         delimiter = ",",
@@ -143,6 +156,7 @@ available_parsers = [
     AudacityParser,
     RavenParser,
     KaleidoscopeParser,
+    BirdNetRavenParser,
 ]
 
 

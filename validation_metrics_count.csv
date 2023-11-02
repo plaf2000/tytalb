@@ -1,8 +1,0 @@
-,precision,recall,f1 score
-Noise,0.0,0.0,0.0
-another long,1.0,1.0,1.0
-asdf,1.0,1.0,1.0
-barba,1.0,1.0,1.0
-frontnoise,0.3333333333333333,0.3333333333333333,0.3333333333333333
-test,0.5,0.5,0.5
-very long,0.5,0.5,0.5
