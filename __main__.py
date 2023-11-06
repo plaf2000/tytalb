@@ -32,7 +32,7 @@ class LabelMapper:
     def black_listed(self, label: str) -> bool:
         if self.whitelist:
             return label not in self.whitelist
-        return label in self.blacklist
+        return label in self.blacklist if self.blacklist else False
     
     def map(self, label: str) -> str:
         for k, v in self.map_dict.items():
@@ -351,7 +351,7 @@ if __name__ == "__main__":
     
     extract_parser.add_argument("-co", "--chunk-overlap",
                                 dest="chunk_overlap",
-                                help=f"Overlap in seconds between chunks for segments longer than {BIRDNET_AUDIO_DURATION.s}s."\
+                                help=f"Overlap in seconds between chunks for segments longer than {BIRDNET_AUDIO_DURATION.s}s. "\
                                      F"If it is 0 (by default) the program may run faster.",
                                 default=0)
     
