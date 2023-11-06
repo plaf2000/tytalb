@@ -295,8 +295,8 @@ if __name__ == "__main__":
     """
 
     extract_parser = subparsers.add_parser("extract",
-                                           help="Extracts audio chunks from long audio files using FFmpeg based on the given parser annotation." \
-                                                "the result consists of multiple audio file, each 3s long \"chunk\", each in the corresponding." \
+                                           help="Extracts audio chunks from long audio files using FFmpeg based on the given parser annotation. " \
+                                                "The result consists of multiple audio file, each 3s long \"chunk\", each in the corresponding " \
                                                 "labelled folder, which can be used to train the BirdNet custom classifier.")
     
     extract_parser.add_argument("-i", "--input-dir",
@@ -316,6 +316,7 @@ if __name__ == "__main__":
                                 required=True,
                                 help="Annotation format.")
     
+    
     extract_parser.add_argument("-a", "--audio-root-dir",
                                 dest="audio_files_dir",
                                 help="Path to the root directory of the audio files (default=current working dir).", default=".")
@@ -334,6 +335,13 @@ if __name__ == "__main__":
                                 dest="export_dir",
                                 help="Path to the output directory. If doesn't exist, it will be created.",
                                 default=".")
+    
+    extract_parser.add_argument("-l", "--label-settings",
+                                dest="label_settings_path",
+                                help="Path to the file used to map and filter labels. Please refer to `README.md`. "\
+                                     "By default the file is `labels.json` in the root directory of annotations.",
+                                type=str,
+                                default=None)
     
     extract_parser.add_argument("-r", "--resample",
                                 dest="resample",
@@ -356,14 +364,19 @@ if __name__ == "__main__":
     """
         Parse arguments to train the model.
     """
-    train_parser = subparsers.add_parser("train")
+    train_parser = subparsers.add_parser("train", help="Train a custom classifier using BirdNet Analyzer. "\
+                                                       "The args are passed directly to `train.py` from BirdNet.")
 
 
 
     """
         Parse arguments to validate BirdNet predictions.
     """
-    validate_parser = subparsers.add_parser("validate")
+    validate_parser = subparsers.add_parser("validate", help="Validate the output from BirdNet Analyzer with some ground truth annotations. "\
+                                                             "This creates two confusion matrices: one for the time and one for the count "\
+                                                             "of (in)correctly identified segments of audio. From this, recall, precision and "\
+                                                             "f1 score are computed and output in different tables.")
+
     validate_parser.add_argument("-gt", "--ground-truth",
                                 dest="tables_dir_gt",
                                 help="Path to the folder of the ground truth annotations (default=current working dir).",
@@ -414,6 +427,11 @@ if __name__ == "__main__":
         logger.print("Started processing...")
         ts = time.time()
 
+        label_settings_path = args.label_settings_path
+        if label_settings_path is None:
+            label_settings_path = os.path.join(args.tables_dir, "labels.json")
+
+
 
         try:
             bnt = BirdNetTrainer(
@@ -429,7 +447,7 @@ if __name__ == "__main__":
                 logger=logger,
                 logfile_errors_path=os.path.join(export_dir, "error_log.txt"),
                 logfile_success_path=os.path.join(export_dir, "success_log.txt"),
-                label_settings_path = os.path.join(args.tables_dir, "labels.json"),
+                label_settings_path = label_settings_path,
                 resample=args.resample,
                 overlap_s=args.chunk_overlap,
                 date_format=args.date_format
@@ -441,7 +459,7 @@ if __name__ == "__main__":
             print(f"Check {logger.logfile_path} for more information.")
             logger.print_exception(e)  
     elif args.action == "train":
-        subprocess.run(["python", "BirdNET-Analyzer/train.py"] + custom_args)
+        subprocess.run(["python", "train.py"] + custom_args, cwd="BirdNET-Analyzer/")
     elif args.action=="validate":
         bnt_gt = BirdNetTrainer(
             tables_dir=args.tables_dir_gt,

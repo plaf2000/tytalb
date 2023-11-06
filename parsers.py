@@ -7,11 +7,21 @@ import os
 
 """
 Custom parser to parse the table-formatted text files.
+To create a custom parser, extend the `TableParser`
+class and override the default arguments.
+
+Then collect the arguments to pass to this parent
+class as done in the parser list below with the method
+`collect_args()`.
+
 Use `Column` to define the index of the location (starting
  from 0) where the attribute can be retrieved.
 
 If the tables have an header, set the class' attribute
 to true and define the name of the column in the header.
+
+Do not forget to add the newly created parser in the list of
+available parsers (`available_parsers`) below.
 
 The attribute `names` is used to identify the parser, 
 make sure that there are no overlaps between different parser
@@ -19,8 +29,8 @@ in the `available_parser` list.
 
 """
 
-
 def collect_args(all_locs: dict):
+    # Do not touch this
     args = [arg for arg in signature(TableParser.__init__).parameters]
     args.remove("self")
     args_dict = {}
@@ -28,6 +38,7 @@ def collect_args(all_locs: dict):
         if k in args:
             args_dict[k] = all_locs[k]
     return args_dict
+
 
 class SonicParser(TableParser):
     def __init__(self, 
