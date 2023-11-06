@@ -108,3 +108,25 @@ will ignore all labels matching `r"tyt\w*"`.
 will instead consider all the other labels as noise.
 
 Whitelist have precedence over blacklist.
+
+## Validate
+
+```
+usage: . validate [-h] [-gt TABLES_DIR_GT] [-tv TABLES_DIR_TV] -fgt {sonic-visualizer,sv,audacity,ac,raven,rvn,kaleidoscope,ks,birdnet_raven,bnrv}
+                  [-ftv {sonic-visualizer,sv,audacity,ac,raven,rvn,kaleidoscope,ks,birdnet_raven,bnrv}] [-o OUTPUT_DIR] [-re RECURSIVE]
+
+options:
+  -h, --help            show this help message and exit
+  -gt TABLES_DIR_GT, --ground-truth TABLES_DIR_GT
+                        Path to the folder of the ground truth annotations (default=current working dir).
+  -tv TABLES_DIR_TV, --to-validate TABLES_DIR_TV
+                        Path to the folder of the annotations to validate (default=current working dir).
+  -fgt {sonic-visualizer,sv,audacity,ac,raven,rvn,kaleidoscope,ks,birdnet_raven,bnrv}, --annotation-format-ground-truth {sonic-visualizer,sv,audacity,ac,raven,rvn,kaleidoscope,ks,birdnet_raven,bnrv}
+                        Annotation format for ground truth data.
+  -ftv {sonic-visualizer,sv,audacity,ac,raven,rvn,kaleidoscope,ks,birdnet_raven,bnrv}, --annotation-format-to-validate {sonic-visualizer,sv,audacity,ac,raven,rvn,kaleidoscope,ks,birdnet_raven,bnrv}
+                        Annotation format for data to validate (default=raven).
+  -o OUTPUT_DIR, --output-dir OUTPUT_DIR
+                        Path to the output directory (default=current working dir).
+  -re RECURSIVE, --recursive RECURSIVE
+                        Wether to look for tables inside the root directory recursively or not (default=True).
+```
