@@ -136,7 +136,7 @@ class BirdNetTrainer:
         validate(ground_truth=self, to_validate=other, *args, **kwargs) 
     
 
-def validate(ground_truth: BirdNetTrainer, to_validate: BirdNetTrainer, binary=False, positive_labels=None):
+def validate(ground_truth: BirdNetTrainer, to_validate: BirdNetTrainer, binary=False, positive_labels=None, late_start = False, early_stop = False):
 
     all_rel_paths = set(ground_truth.audio_files.keys()) | set(to_validate.audio_files.keys())
 
@@ -214,9 +214,17 @@ def validate(ground_truth: BirdNetTrainer, to_validate: BirdNetTrainer, binary=F
                     set_both(seg.label, NOISE_LABEL, seg.dur)
             continue
 
+        min_tstart = min([s.tstart for s in af_gt.segments])
+        max_tend = max([s.tend for s in af_gt.segments])
 
-        segs_gt = Segment.get_intervaltree([s for s in af_gt.segments if s.label!=NOISE_LABEL])
-        segs_tv = Segment.get_intervaltree([s for s in af_tv.segments if s.label!=NOISE_LABEL])
+
+        def interval_tree(af: SegmentsWrapper):
+            return Segment.get_intervaltree([s for s in af.segments if s.label!=NOISE_LABEL 
+                                            and (not late_start or s.tend >= min_tstart)
+                                            and (not early_stop or s.tstart <= max_tend)])
+        
+        segs_gt = interval_tree(af_gt)
+        segs_tv = interval_tree(af_tv)
     
 
 
@@ -274,7 +282,6 @@ def validate(ground_truth: BirdNetTrainer, to_validate: BirdNetTrainer, binary=F
         return df_matrix, df_metrics
 
     return  stats(conf_time_matrix), stats(conf_count_matrix)
-
 
 
 
@@ -423,6 +430,20 @@ if __name__ == "__main__":
                                 dest="recursive",
                                 help="Wether to look for tables inside the root directory recursively or not (default=True).",
                                 default=True)
+
+    validate_parser.add_argument("-ls", "--late-start",
+                                dest="late_start",
+                                help='Whether to not consider the interval between the start of the ground truth recording '\
+                                     'and the first annotation (default = False)',
+                                type=bool,
+                                default=False)
+    
+    validate_parser.add_argument("-es", "--early-stop",
+                                dest="early_stop",
+                                help='Whether to not consider the interval between the last annotation '\
+                                     'and the end of the ground truth recording (default = False)',
+                                type=bool,
+                                default=False)
     
 
     
@@ -492,7 +513,7 @@ if __name__ == "__main__":
             recursive_subfolders=args.recursive
         )
 
-        stats_time, stats_count =  validate(bnt_gt, bnt_tv)
+        stats_time, stats_count =  validate(bnt_gt, bnt_tv, late_start = args.late_start, early_stop = args.early_stop)
 
 
         def save_stats(stats: tuple[pd.DataFrame, pd.DataFrame], suffix: str):

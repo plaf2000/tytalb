@@ -80,7 +80,7 @@ class AudioFile:
         if ss_s is not None:
             ss = TimeUnit(ss_s)
         if ss is not None:
-            args += ["-ss", str(ss.s)]
+            args += ["-ss", str(max(0, ss.s))]
         if to_s is not None:
             to = TimeUnit(to_s)
         if to is not None:
@@ -254,6 +254,9 @@ class AudioFile:
         ```    
         """
 
+        logger.print("Early stop:", early_stop)
+        logger.print("Late start:", late_start)
+ 
         length_threshold = TimeUnit(length_threshold_s)
         segments = sorted([s.birdnet_pad() for s in segments], key=lambda seg: seg.tstart)
         annotation_start = 0 if not late_start else segments[0].tstart
@@ -360,13 +363,15 @@ class AudioFile:
                             # If the segment is very long (above length_threshold) or overlap is 0, use the faster segment ffmpeg command
                             # In this case we won't have any overlap (this command doesn't allow to do so).
 
-                            splits = self.segment_path(base_path, seg, audio_format).split(".")
+                            segment_path = self.segment_path(base_path, seg, audio_format)
+                            out_dir = os.path.dirname(segment_path)
+                            splits = segment_path.split(".")
                             base_out_path = ".".join(splits[:-1])
 
                             out_path = f"{base_out_path}_%04d.{splits[-1]}"
 
-                            temp_seglist = os.path.join(base_out_path, "list.csv")
-                            seglist_prefix = os.path.join(base_out_path, "")
+                            temp_seglist = os.path.join(out_dir, "list.csv")
+                            seglist_prefix = os.path.join(out_dir, "")
                            
                             proc = self.export_segments_ffmpeg(
                                 path=fpath,

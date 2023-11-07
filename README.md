@@ -60,6 +60,10 @@ options:
                         Overlap in seconds between chunks for segments longer than 3.0s. If it is 0 (by default) the program may run faster.
   -df DATE_FORMAT, --date-fromat DATE_FORMAT
                         Date format of the file. (default = "%Y%m%d_%H%M%S")
+  -ls LATE_START, --late-start LATE_START
+                        Whether to not consider the interval between the start of the recording and the first annotation (default = False)
+  -es EARLY_STOP, --early-stop EARLY_STOP
+                        Whether to not consider the interval between the last annotation and the end of the recording (default = False)
 ```
 
 the `-l` or `--label-settings` allow to easily manage different labels without the need to delete or rename folders.
