@@ -7,7 +7,7 @@ from audio_file import AudioFile
 from loggers import ProcLogger, Logger, ProgressBar 
 from variables import BIRDNET_AUDIO_DURATION, BIRDNET_SAMPLE_RATE, NOISE_LABEL
 from segment import Segment
-from argparse import ArgumentParser
+from argparse import ArgumentParser, BooleanOptionalAction
 from datetime import datetime
 import pandas as pd
 import json
@@ -217,11 +217,11 @@ def validate(ground_truth: BirdNetTrainer, to_validate: BirdNetTrainer, binary=F
         min_tstart = min([s.tstart for s in af_gt.segments])
         max_tend = max([s.tend for s in af_gt.segments])
 
-
+        print(late_start, early_stop)
         def interval_tree(af: SegmentsWrapper):
             return Segment.get_intervaltree([s for s in af.segments if s.label!=NOISE_LABEL 
-                                            and (not late_start or s.tend >= min_tstart)
-                                            and (not early_stop or s.tstart <= max_tend)])
+                                             and (not late_start or s.tend >= min_tstart)
+                                             and (not early_stop or s.tstart <= max_tend)])
         
         segs_gt = interval_tree(af_gt)
         segs_tv = interval_tree(af_tv)
@@ -249,7 +249,6 @@ def validate(ground_truth: BirdNetTrainer, to_validate: BirdNetTrainer, binary=F
             seg_tv = Segment.from_interval(seg_tv)
             overlapping = segs_gt[seg_tv.begin:seg_tv.end]
             if len(overlapping) == 0:
-                print(seg_tv)
                 set_both(NOISE_LABEL, seg_tv.label, seg_gt.dur)
                 continue
             t = Segment.get_intervaltree(overlapping)
@@ -315,7 +314,8 @@ if __name__ == "__main__":
                                 type=bool,
                                 dest="recursive",
                                 help="Wether to look for tables inside the root directory recursively or not (default=True).",
-                                default=True)
+                                default=True,
+                                action=BooleanOptionalAction)
     
     extract_parser.add_argument("-f", "--annotation-format",
                                 dest="table_format",
@@ -373,6 +373,7 @@ if __name__ == "__main__":
                                 help='Whether to not consider the interval between the start of the recording and the first '\
                                      'annotation (default = False)',
                                 type=bool,
+                                action=BooleanOptionalAction,
                                 default=False)
     
     extract_parser.add_argument("-es", "--early-stop",
@@ -380,7 +381,10 @@ if __name__ == "__main__":
                                 help='Whether to not consider the interval between the last annotation '\
                                      'and the end of the recording (default = False)',
                                 type=bool,
+                                action=BooleanOptionalAction,
                                 default=False)
+    
+
     
     """
         Parse arguments to train the model.
@@ -394,9 +398,11 @@ if __name__ == "__main__":
         Parse arguments to validate BirdNet predictions.
     """
     validate_parser = subparsers.add_parser("validate", help="Validate the output from BirdNet Analyzer with some ground truth annotations. "\
-                                                             "This creates two confusion matrices: one for the time and one for the count "\
+                                                             "This creates two confusion matrices: one for the time (`confusion_matrix_time.csv`) "\
+                                                             "and one for the count (`confusion_matrix_count.csv`)"\
                                                              "of (in)correctly identified segments of audio. From this, recall, precision and "\
-                                                             "f1 score are computed and output in different tables.")
+                                                             "f1 score are computed and output in different tables (`validation_metrics_count.csv` "\
+                                                             "and `validation_metrics_time.csv`).")
 
     validate_parser.add_argument("-gt", "--ground-truth",
                                 dest="tables_dir_gt",
@@ -426,23 +432,26 @@ if __name__ == "__main__":
                                 default=".")
     
     validate_parser.add_argument("-re", "--recursive",
-                                type=bool,
                                 dest="recursive",
                                 help="Wether to look for tables inside the root directory recursively or not (default=True).",
-                                default=True)
+                                type=bool,
+                                action=BooleanOptionalAction,
+                                default=False)
 
     validate_parser.add_argument("-ls", "--late-start",
                                 dest="late_start",
                                 help='Whether to not consider the interval between the start of the ground truth recording '\
                                      'and the first annotation (default = False)',
                                 type=bool,
+                                action=BooleanOptionalAction,
                                 default=False)
     
     validate_parser.add_argument("-es", "--early-stop",
                                 dest="early_stop",
                                 help='Whether to not consider the interval between the last annotation '\
-                                     'and the end of the ground truth recording (default = False)',
+                                        'and the end of the recording (default = False)',
                                 type=bool,
+                                action=BooleanOptionalAction,
                                 default=False)
     
 
@@ -465,7 +474,6 @@ if __name__ == "__main__":
         label_settings_path = args.label_settings_path
         if label_settings_path is None:
             label_settings_path = os.path.join(args.tables_dir, "labels.json")
-
 
 
         try:
