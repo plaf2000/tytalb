@@ -361,6 +361,20 @@ if __name__ == "__main__":
                                 type=str,
                                 default="%Y%m%d_%H%M%S")
     
+    extract_parser.add_argument("-ls", "--late-start",
+                                dest="late_start",
+                                help='Whether to not consider the interval between the start of the recording and the first '\
+                                     'annotation (default = False)',
+                                type=bool,
+                                default=False)
+    
+    extract_parser.add_argument("-es", "--early-stop",
+                                dest="early_stop",
+                                help='Whether to not consider the interval between the last annotation '\
+                                     'and the end of the recording (default = False)',
+                                type=bool,
+                                default=False)
+    
     """
         Parse arguments to train the model.
     """
@@ -450,7 +464,9 @@ if __name__ == "__main__":
                 label_settings_path = label_settings_path,
                 resample=args.resample,
                 overlap_s=args.chunk_overlap,
-                date_format=args.date_format
+                date_format=args.date_format,
+                late_start = args.late_start,
+                early_stop = args.early_stop,
             )
         
             logger.print(f"... end of processing (elapsed {time.time()-ts:.1f}s)")
@@ -458,6 +474,8 @@ if __name__ == "__main__":
             print("An error occured and the operation was not completed!")
             print(f"Check {logger.logfile_path} for more information.")
             logger.print_exception(e)  
+
+
     elif args.action == "train":
         subprocess.run(["python", "train.py"] + custom_args, cwd="BirdNET-Analyzer/")
     elif args.action=="validate":

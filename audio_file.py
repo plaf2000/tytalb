@@ -224,6 +224,8 @@ class AudioFile:
             resample: int = BIRDNET_SAMPLE_RATE,
             overlap_s: float = 0, 
             length_threshold_s = 100 * BIRDNET_AUDIO_DURATION.s,
+            late_start: bool = False,
+            early_stop: bool = False,
             proc_logger: ProcLogger = ProcLogger(),
             logger: Logger = Logger(),
             progress_bar: ProgressBar = None,
@@ -240,6 +242,10 @@ class AudioFile:
             - `overlap_s` (`float`, optional): The amount of overlap between segments in seconds for segments longer than `BIRDNET_AUDIO_DURATION` (default is 0).
             - `length_threshold_s` (`int`, optional): Length threshold in seconds above which the algorithm will start splitting 
               the long segments using the faster ffmpeg segment command, without overlap (default is 300).
+            - `late_start` (`bool`, optional): Whether to not consider the interval between the start of the recording and the first
+              segment (default is False). 
+            - `early_stop` (`bool`, optional): Whether to not consider the interval between the the last segment and the end of the
+              recording (default is False). 
             - `logger` (`ProcLogger`): object which allow to log success and error messages from the processes.
             - `**kwargs`: Additional keyword arguments for customization.
         Example Usage:
@@ -248,9 +254,10 @@ class AudioFile:
         ```    
         """
 
-
         length_threshold = TimeUnit(length_threshold_s)
-        segments = sorted([d.birdnet_pad() for d in segments], key=lambda seg: seg.tstart)
+        segments = sorted([s.birdnet_pad() for s in segments], key=lambda seg: seg.tstart)
+        annotation_start = 0 if not late_start else segments[0].tstart
+        annotation_end = self.duration if not early_stop else max([s.tend for s in segments])
         overlap = TimeUnit(overlap_s)
         max_tend = 0
         n_segments_original = len(segments)
@@ -316,6 +323,12 @@ class AudioFile:
 
                     tstart_f = TimeUnit(row[1])
                     tend_f = TimeUnit(row[2])
+
+                    if tend_f < annotation_start:
+                        continue
+
+                    if tstart_f > annotation_end:
+                        continue
 
                     if (tend_f-tstart_f) < BIRDNET_AUDIO_DURATION:
                         continue
