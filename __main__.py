@@ -521,6 +521,8 @@ if __name__ == "__main__":
 
         logger = Logger(logfile_path=os.path.join(export_dir, "log.txt"))
 
+        logger.print(args)
+
         logger.print("Started processing...")
         ts = time.time()
 
@@ -557,6 +559,7 @@ if __name__ == "__main__":
         
             logger.print(f"... end of processing (elapsed {time.time()-ts:.1f}s)")
         except Exception as e:
+            print()
             print("An error occured and the operation was not completed!")
             print(f"Check {logger.logfile_path} for more information.")
             logger.print_exception(e)  
