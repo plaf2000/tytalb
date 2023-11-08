@@ -50,7 +50,7 @@ class SegmentsWrapper:
         self.segments: list[Segment] = segments
         self.audio_file: AudioFile | None = audio_file
 
-class BirdNetTrainer:
+class Annotations:
     def __init__(
             self,
             tables_dir: str,
@@ -134,11 +134,33 @@ class BirdNetTrainer:
             af_wrap.audio_file.export_all_birdnet(export_dir, af_wrap.segments, proc_logger=proc_logger, logger=logger, progress_bar=prog_bar, **kwargs)
         prog_bar.terminate()
 
-    def validate(self, other: BirdNetTrainer, *args, **kwargs):
+    def validate(self, other: Annotations, *args, **kwargs):
         validate(ground_truth=self, to_validate=other, *args, **kwargs) 
     
 
-def validate(ground_truth: BirdNetTrainer, to_validate: BirdNetTrainer, binary=False, positive_labels=None, late_start = False, early_stop = False):
+def validate(
+        ground_truth: Annotations,
+        to_validate: Annotations,
+        binary=False,
+        positive_labels: str=None,
+        late_start = False,
+        early_stop = False 
+        ):
+    """
+    Compare the annotations to validate to the ground truth ones.
+    Returns a tuple of shape (2,2). The first element of the tuple
+    contains the confusion matrix and the metrics (as tuple) 
+    in terms of the count of overlapping segments, while the second 
+    in terms of the overlapping time.
+
+    Problems
+    --------
+     - If ground-truth annotation times are overlapping, in the 
+       matrix they will appear multiple times, so some annotations
+       can be considered wrong although correct.
+     - The true negatives (noise matching noise) are not registered
+       in the matrix.
+    """
 
     all_rel_paths = set(ground_truth.audio_files.keys()) | set(to_validate.audio_files.keys())
 
@@ -220,6 +242,7 @@ def validate(ground_truth: BirdNetTrainer, to_validate: BirdNetTrainer, binary=F
         max_tend = max([s.tend for s in af_gt.segments])
 
         def interval_tree(af: SegmentsWrapper):
+            # If late_start and early_stop, restrict the interval
             return Segment.get_intervaltree([s for s in af.segments if s.label!=NOISE_LABEL 
                                              and (not late_start or s.tend >= min_tstart)
                                              and (not early_stop or s.tstart <= max_tend)])
@@ -235,12 +258,16 @@ def validate(ground_truth: BirdNetTrainer, to_validate: BirdNetTrainer, binary=F
             overlapping = segs_tv[seg_gt.begin:seg_gt.end]
 
             if len(overlapping) == 0:
+                # The ground truth has no label for this interval, therefore FP
                 set_both(seg_gt.label, NOISE_LABEL, seg_gt.dur)
                 continue
 
             for seg_tv in overlapping:
+                # If overlapping set the confusion matrices accordingly
                 seg_tv = Segment.from_interval(seg_tv)
                 set_both(seg_gt.label, seg_tv.label, seg_tv.overlapping_time(seg_gt))
+            
+            # Set all the time in which no overlap was found as FP
             t = Segment.get_intervaltree(overlapping)
             t.merge_overlaps()
             tot_overlapping = sum([Segment.from_interval(s).overlapping_time(seg_gt) for s in t])
@@ -250,12 +277,18 @@ def validate(ground_truth: BirdNetTrainer, to_validate: BirdNetTrainer, binary=F
             seg_tv = Segment.from_interval(seg_tv)
             overlapping = segs_gt[seg_tv.begin:seg_tv.end]
             if len(overlapping) == 0:
+                # The annotation to validate have no label for this interval, therefore FN
                 set_both(NOISE_LABEL, seg_tv.label, seg_gt.dur)
                 continue
+
+            # Set all the time in which no overlap was found as FP
             t = Segment.get_intervaltree(overlapping)
             t.merge_overlaps()
             tot_overlapping = sum([Segment.from_interval(s).overlapping_time(seg_gt) for s in t])
             set_conf_time(NOISE_LABEL, seg_tv.label, seg_tv.dur - tot_overlapping)
+
+        # Note that TN is never set (therefore 0)
+        # TODO: Maybe implement this?
     
     def stats(matrix):
         precision = {}
@@ -488,7 +521,7 @@ if __name__ == "__main__":
 
 
         try:
-            bnt = BirdNetTrainer(
+            bnt = Annotations(
                 tables_dir=args.tables_dir,
                 table_format=args.table_format,
                 recursive_subfolders=args.recursive,
@@ -520,14 +553,14 @@ if __name__ == "__main__":
     elif args.action == "train":
         subprocess.run(["python", "train.py"] + custom_args, cwd="BirdNET-Analyzer/")
     elif args.action=="validate":
-        bnt_gt = BirdNetTrainer(
+        bnt_gt = Annotations(
             tables_dir=args.tables_dir_gt,
             table_format=args.table_format_gt,
             recursive_subfolders=args.recursive
 
         )
 
-        bnt_tv = BirdNetTrainer(
+        bnt_tv = Annotations(
             tables_dir=args.tables_dir_tv,
             table_format=args.table_format_tv,
             recursive_subfolders=args.recursive

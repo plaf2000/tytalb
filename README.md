@@ -136,3 +136,7 @@ options:
   -re RECURSIVE, --recursive RECURSIVE
                         Wether to look for tables inside the root directory recursively or not (default=True).
 ```
+
+## Problems
+- If ground-truth annotation times are overlapping, in the matrix they will appear multiple times, so some annotations can be considered wrong although correct.
+- The true negatives (noise matching noise) are not registered in the matrix.

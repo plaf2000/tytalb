@@ -83,7 +83,7 @@ class AudioFile:
         ) -> subprocess.CompletedProcess:
         """
         Export a single segment from TimeUnit `ss` to `to` (resp. `ss_s`, `to_s` in seconds)
-        of the file provided by `path`.
+        of the file provided by `path` using FFmpeg's command.
         """
 
 
@@ -130,6 +130,11 @@ class AudioFile:
             min_seg_duration: float = None,
             **kwargs
         ) -> subprocess.CompletedProcess:
+        """
+        Export multiple segment from TimeUnit `ss` to `to` (resp. `ss_s`, `to_s` in seconds)
+        of the file provided by `path` using FFmpeg's `segment` command, considerably
+        improving speed for non-overlapping (wav) segments.
+        """
 
 
         if ss_s is not None:
@@ -163,7 +168,6 @@ class AudioFile:
         
         if resample is not None and isinstance(resample, int):
             args += ["-ar", str(resample)]
-            # args += ["-osr", str(resample)]
 
         if min_seg_duration is not None and isinstance(min_seg_duration, float):
             args += ["-min_seg_duration", str(min_seg_duration)]
@@ -177,8 +181,6 @@ class AudioFile:
         else: 
             args.append("-n")
 
-    
-
         return subprocess.run(args, capture_output=True)
     
     def rename_or_delete_segments(
@@ -190,6 +192,18 @@ class AudioFile:
             tstart: TimeUnit = None,
             **kwargs,
         ):
+        """
+        After using the segment command from ffmpeg (from `self.export_segments_ffmpeg()`),
+        checks that all the segments in the list provided by `segment_list` are not
+        shorter than the `BIRDNET_AUDIO_DURATION`.
+        If a segment is shorter, start the extraction earlier (if possible), so that
+        it has the desired length.
+
+        If a file is not wav, we also need to re-encode the segment audio file, 
+        because the duration in the header is missing.
+
+        As a result, this might take longer.
+        """
 
         with open(segment_list) as fp:
             csv_reader = csv.reader(fp)
@@ -204,6 +218,7 @@ class AudioFile:
 
                 if tend_f - tstart_f < BIRDNET_AUDIO_DURATION:
                     if tend_f - BIRDNET_AUDIO_DURATION > 0:
+                        # If possible, start extraction earlier
                         tstart_f = tend_f - BIRDNET_AUDIO_DURATION
                         tend_f = TimeUnit(row[2])
                         tstart_abs = tstart + tstart_f
@@ -220,10 +235,8 @@ class AudioFile:
                     os.replace(fpath, out_path)
                     continue
 
-                # If the output audio is not wav, a rencode is needed in order
-                # to konw the duration. 
-                # As a result, this might take longer.
-                
+                # If the output audio is not wav, a re-encode is needed.
+
                 self.export_segment_ffmpeg(fpath, out_path)
                 os.remove(fpath)
         os.remove(segment_list)
@@ -491,7 +504,7 @@ class AudioFile:
                             temp_seglist,
                             tstart_f,
                         )
-                                           
+                        
 
 
         noise_chunks = len(os.listdir(basepath_noise))
