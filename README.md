@@ -1,7 +1,7 @@
 # Bioacoustic ALAN project
 
 This repo contain the code necessary to train a BirdNet custom classifier from a set annotations and the original file.
-The script should be able to support different format, but currently only Raven has been tested.
+The script should be able to support different format, but currently only Raven, Audacity and Sonic Visualizer have been tested.
 
 It is also possible to create a custom parser for even more data formats.
 In order to do so, please follow the instruction inside the `parsers.py` script.
@@ -43,6 +43,8 @@ options:
                         Wether to look for tables inside the root directory recursively or not (default=True).
   -f {sonic-visualizer,sv,audacity,ac,raven,rvn,kaleidoscope,ks,birdnet_raven,bnrv}, --annotation-format {sonic-visualizer,sv,audacity,ac,raven,rvn,kaleidoscope,ks,birdnet_raven,bnrv}
                         Annotation format.
+  --header, --no-header
+                        Whether the annotation tables have an header. The default value is defined by the annotations parser.
   -a AUDIO_FILES_DIR, --audio-root-dir AUDIO_FILES_DIR
                         Path to the root directory of the audio files (default=current working dir).
   -ie AUDIO_INPUT_EXT, --audio-input-ext AUDIO_INPUT_EXT

@@ -41,6 +41,9 @@ class AudioFile:
         self.date_time = None
     
     def set_date(self, date_format:str = "%Y%m%d_%H%M%S", **kwargs):
+        """
+        Sets the date time of the audio file according to the provided filename date format.
+        """
         self.date_format = date_format
         fre = date_format
         for k, v in dateel_lengths.items():
@@ -51,6 +54,10 @@ class AudioFile:
             self.date_time = datetime.strptime(m.group(0), date_format)
 
     def segment_path(self, base_path: str, segment: Segment, audio_format: str) -> str:
+        """
+        Returns the path for an audio segment, according to its label and (if provided) the date time of the
+        original audio file.
+        """
         out_path = os.path.join(base_path, segment.label)
         os.makedirs(out_path, exist_ok=True)
     
@@ -74,6 +81,10 @@ class AudioFile:
             codec: str = None,
             **kwargs
         ) -> subprocess.CompletedProcess:
+        """
+        Export a single segment from TimeUnit `ss` to `to` (resp. `ss_s`, `to_s` in seconds)
+        of the file provided by `path`.
+        """
 
 
         args = ["ffmpeg", "-i", path, "-loglevel", "error"]
@@ -208,9 +219,11 @@ class AudioFile:
                 if "wav" == ext.lower():
                     os.replace(fpath, out_path)
                     continue
+
                 # If the output audio is not wav, a rencode is needed in order
                 # to konw the duration. 
                 # As a result, this might take longer.
+                
                 self.export_segment_ffmpeg(fpath, out_path)
                 os.remove(fpath)
         os.remove(segment_list)

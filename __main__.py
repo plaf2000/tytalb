@@ -99,7 +99,7 @@ class BirdNetTrainer:
     def n_segments(self):
         return sum([len(af_wrap.segments) for af_wrap in self.audio_files.values()])
 
-    def extract_for_training(self, audio_files_dir: str, audio_file_ext: str, export_dir: str, logger: Logger, **kwargs) -> dict[str, str | int | float]:
+    def extract_for_training(self, audio_files_dir: str, audio_file_ext: str, export_dir: str, logger: Logger, **kwargs):
         logger.print("Input annotations' folder:", self.tables_dir)
         logger.print("Input audio folder:", audio_files_dir)
         logger.print("Output audio folder:", export_dir)
@@ -109,7 +109,9 @@ class BirdNetTrainer:
         for rel_path, af_wrap in self.audio_files.items():
             path_no_ext = os.path.join(audio_files_dir, rel_path)
             audio_path = ".".join([path_no_ext, audio_file_ext])
-            af_wrap.audio_file = AudioFile(audio_path)
+            af = AudioFile(audio_path)
+            af.set_date(**kwargs)
+            af_wrap.audio_file = af
             prog_bar.print(1)
         prog_bar.terminate()
 
@@ -217,7 +219,6 @@ def validate(ground_truth: BirdNetTrainer, to_validate: BirdNetTrainer, binary=F
         min_tstart = min([s.tstart for s in af_gt.segments])
         max_tend = max([s.tend for s in af_gt.segments])
 
-        print(late_start, early_stop)
         def interval_tree(af: SegmentsWrapper):
             return Segment.get_intervaltree([s for s in af.segments if s.label!=NOISE_LABEL 
                                              and (not late_start or s.tend >= min_tstart)
@@ -323,6 +324,12 @@ if __name__ == "__main__":
                                 required=True,
                                 help="Annotation format.")
     
+    extract_parser.add_argument("--header",
+                                dest="header",
+                                help="Whether the annotation tables have an header. The default value is defined "\
+                                     "by the annotations parser.",
+                                action=BooleanOptionalAction)
+    
     
     extract_parser.add_argument("-a", "--audio-root-dir",
                                 dest="audio_files_dir",
@@ -362,7 +369,7 @@ if __name__ == "__main__":
                                      F"If it is 0 (by default) the program may run faster.",
                                 default=0)
     
-    extract_parser.add_argument("-df", "--date-fromat",
+    extract_parser.add_argument("-df", "--date-format",
                                 dest="date_format",
                                 help='Date format of the file. (default = "%%Y%%m%%d_%%H%%M%%S")',
                                 type=str,
@@ -475,12 +482,17 @@ if __name__ == "__main__":
         if label_settings_path is None:
             label_settings_path = os.path.join(args.tables_dir, "labels.json")
 
+        parser_kwargs = {}
+        if args.header is not None:
+            parser_kwargs["header"] = args.header
+
 
         try:
             bnt = BirdNetTrainer(
                 tables_dir=args.tables_dir,
                 table_format=args.table_format,
                 recursive_subfolders=args.recursive,
+                **parser_kwargs,
             )\
             .extract_for_training(
                 audio_files_dir=args.audio_files_dir,
