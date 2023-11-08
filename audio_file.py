@@ -194,7 +194,7 @@ class AudioFile:
         ):
         """
         After using the segment command from ffmpeg (from `self.export_segments_ffmpeg()`),
-        checks that all the segments in the list provided by `segment_list` are not
+        checks that all the chunks in the list provided by `segment_list` are not
         shorter than the `BIRDNET_AUDIO_DURATION`.
         If a segment is shorter, start the extraction earlier (if possible), so that
         it has the desired length.
@@ -203,7 +203,13 @@ class AudioFile:
         because the duration in the header is missing.
 
         As a result, this might take longer.
+
+        Returns
+        -------
+        The number of "valid" chunks (larger than `BIRDNET_AUDIO_DURATION`) (`int`).
         """
+
+        count = 0
 
         with open(segment_list) as fp:
             csv_reader = csv.reader(fp)
@@ -226,11 +232,15 @@ class AudioFile:
                         seg = Segment(tstart_abs, tend_abs, label)
                         out_path = self.segment_path(base_path, seg, ext)
                         self.export_segment_ffmpeg(unsegmented_fpath, out_path, ss = tstart_f, to=tend_f)
+                        count += 1
                     os.remove(fpath)
                     continue
 
                 seg = Segment(tstart_abs, tend_abs, label)
                 out_path = self.segment_path(base_path, seg, ext)
+                count += 1
+
+
                 if "wav" == ext.lower():
                     os.replace(fpath, out_path)
                     continue
@@ -240,6 +250,7 @@ class AudioFile:
                 self.export_segment_ffmpeg(fpath, out_path)
                 os.remove(fpath)
         os.remove(segment_list)
+        return count
 
     
     def export_all_birdnet(
@@ -279,9 +290,6 @@ class AudioFile:
         birdnet_instance.export_all_birdnet("./your/output/directory", segments, audio_format="wav", overlap_s=1)
         ```    
         """
-
-        logger.print("Early stop:", early_stop)
-        logger.print("Late start:", late_start)
  
         length_threshold = TimeUnit(length_threshold_s)
         segments = sorted([s.birdnet_pad() for s in segments], key=lambda seg: seg.tstart)
@@ -367,7 +375,6 @@ class AudioFile:
                     while seg and seg.tend < tend_f:
                         # Until there are segments in the list within the chunk range
 
-
                         ss = seg.tstart - tstart_f
                         to = seg.tend - tstart_f
                         
@@ -416,8 +423,7 @@ class AudioFile:
                                 f"Error while exporting {seg}:"
                             )
 
-                            self.rename_or_delete_segments(base_path, seg.label, fpath, temp_seglist, tstart_f)
-                            
+                            n_labelled_chunks += self.rename_or_delete_segments(base_path, seg.label, fpath, temp_seglist, tstart_f)
 
                         else:
                             last = False
@@ -497,17 +503,18 @@ class AudioFile:
                             f"Error while exporting {seg_noise} into segments:"
                         )
 
-                        self.rename_or_delete_segments(
+                        noise_chunks += self.rename_or_delete_segments(
                             base_path,
                             NOISE_LABEL,
                             fpath,
                             temp_seglist,
                             tstart_f,
                         )
-                        
 
 
-        noise_chunks = len(os.listdir(basepath_noise))
+
+
+        
         logger.print(
             f"{self.path}:",
             n_segments_original,

@@ -382,7 +382,14 @@ if __name__ == "__main__":
                                 dest="export_dir",
                                 help="Path to the output directory. If doesn't exist, it will be created.",
                                 default=".")
-    
+
+    extract_parser.add_argument("--tstamp-subdir",
+                                dest="tstamp_outdir",
+                                help="Whether to create an output subfolder with the current timestamp which "\
+                                     "which will contain the output files.",
+                                default=True,
+                                action=BooleanOptionalAction)
+
     extract_parser.add_argument("-l", "--label-settings",
                                 dest="label_settings_path",
                                 help="Path to the file used to map and filter labels. Please refer to `README.md`. "\
@@ -501,10 +508,11 @@ if __name__ == "__main__":
 
     if args.action == "extract":
         os.makedirs(args.export_dir, exist_ok=True)
-        export_dir = os.path.join(args.export_dir, datetime.utcnow().strftime("%Y%m%d_%H%M%SUTC"))
-        os.mkdir(export_dir)
+        export_dir =args.export_dir       
+        if args.tstamp_outdir:
+            export_dir = os.path.join(args.export_dir, datetime.utcnow().strftime("%Y%m%d_%H%M%SUTC"))
+            os.mkdir(export_dir)
         
-        # export_dir =args.export_dir       
 
         logger = Logger(logfile_path=os.path.join(export_dir, "log.txt"))
 
