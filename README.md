@@ -28,6 +28,14 @@ options:
 
 ```
 
+## Requirements
+
+FFmpeg has to be installed and accessible with the command `ffmpeg`.
+Please find the other requirements in "requirements.txt":
+```
+pip install -r requirements.txt
+```
+
 ## Extract
 
 ```

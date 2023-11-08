@@ -1,0 +1,14 @@
+bottle==0.12.25
+gradio==4.1.2
+intervaltree==3.1.0
+librosa==0.10.1
+matplotlib==3.8.0
+numpy==1.25.2
+pandas==2.1.2
+PyInstaller==6.1.0
+Requests==2.31.0
+soundfile==0.12.1
+tensorflow==2.14.0
+tensorflow_intel==2.14.0
+tflite_runtime==2.14.0
+webview==0.1.5
