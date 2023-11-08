@@ -110,6 +110,10 @@ class Annotations:
         for rel_path, af_wrap in self.audio_files.items():
             # Get all files starting with this filename
             audio_candidates = fnmatch.filter(audiodir_files, f"{rel_path}.*")
+            if not audio_candidates:
+                raise Exception(f"No audio files found starting with relative path "\
+                                f"{rel_path} and extension {'|'.join(AUDIO_EXTENSION_PRIORITY)} "\
+                                f"inside {audio_files_dir}.")
             # Give the priority based on `AUDIO_EXTENSION_PRIORITY`
             priority = lambda fname: AUDIO_EXTENSION_PRIORITY.index(fname.split(".")[-1].lower())
             chosen_audio_rel_path = min(audio_candidates, key = priority)
