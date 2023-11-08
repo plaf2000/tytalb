@@ -336,7 +336,7 @@ if __name__ == "__main__":
 
     extract_parser = subparsers.add_parser("extract",
                                            help="Extracts audio chunks from long audio files using FFmpeg based on the given parser annotation. " \
-                                                "The result consists of multiple audio file, each 3s long \"chunk\", each in the corresponding " \
+                                                'The result consists of multiple audio files ("chunks"), each 3s long, placed in the corresponding ' \
                                                 "labelled folder, which can be used to train the BirdNet custom classifier.")
     
     extract_parser.add_argument("-i", "--input-dir",

@@ -16,7 +16,7 @@ Train and validate a custom BirdNet classifier based on given annotations by fir
 positional arguments:
   {extract,train,validate}
     extract             Extracts audio chunks from long audio files using FFmpeg based on the given parser annotation. The result consists of       
-                        multiple audio file, each 3s long "chunk", each in the corresponding labelled folder, which can be used to train the        
+                        multiple audio files ("chunks"), each 3s long, placed in the corresponding labelled folder, which can be used to train the  
                         BirdNet custom classifier.
     train               Train a custom classifier using BirdNet Analyzer. The args are passed directly to `train.py` from BirdNet.
     validate            Validate the output from BirdNet Analyzer with some ground truth annotations. This creates two confusion matrices: one for  
