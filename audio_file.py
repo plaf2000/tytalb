@@ -36,7 +36,7 @@ class AudioFile:
         self.path = path
         self.splits = os.path.basename(path).split(".")
         self.basename = self.splits[0]
-        self.ext = self.splits[-1]
+        self.ext = self.splits[-1].lower()
         self.duration = sf.info(self.path).duration
         self.date_time = None
     
@@ -61,11 +61,12 @@ class AudioFile:
         out_path = os.path.join(base_path, segment.label)
         os.makedirs(out_path, exist_ok=True)
     
+        
         if self.date_time is not None:
             date = self.date_time + timedelta(seconds = segment.tstart.s)
-            name = f"{self.prefix}{date.strftime(self.date_format)}_{segment.dur.s:05.0f}{self.suffix}.{audio_format}"
+            name = f"{self.prefix}{date.strftime(self.date_format)}_{segment.dur.s:05.0f}{self.suffix}_{self.ext}.{audio_format}"
         else:
-            name = f"{self.basename}_{segment.tstart.s:06.0f}_{segment.tend.s:06.0f}.{audio_format}"
+            name = f"{self.basename}_{segment.tstart.s:06.0f}_{segment.tend.s:06.0f}_{self.ext}.{audio_format}"
         return os.path.join(out_path, name)
 
     @staticmethod

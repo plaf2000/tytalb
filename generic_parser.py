@@ -93,8 +93,8 @@ class TableParser:
         to each segment.
         The path is relative to the `tables_base_path` and doesn't contain the audio file 
         extension. 
-        This is used to uniquely identify detections, i.e. two detections from two different
-        files should have a different return value, but the path doesn't need to exist.
+        This is used to uniquely identify detections, i.e. two detections have a different 
+        return value iff. they are from two different files, but the path doesn't need to exist.
 
         By default, there is only one audio file per table, which is retrieved
         by looking in the audio directory for audio files that have the same 

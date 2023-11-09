@@ -5,7 +5,7 @@ from parsers import ap_names, get_parser
 from generic_parser import TableParser
 from audio_file import AudioFile
 from loggers import ProcLogger, Logger, ProgressBar 
-from variables import BIRDNET_AUDIO_DURATION, BIRDNET_SAMPLE_RATE, NOISE_LABEL
+from variables import BIRDNET_AUDIO_DURATION, BIRDNET_SAMPLE_RATE, NOISE_LABEL, AUDIO_EXTENSION_PRIORITY
 from segment import Segment
 from argparse import ArgumentParser, BooleanOptionalAction
 from datetime import datetime
@@ -99,16 +99,26 @@ class Annotations:
     def n_segments(self):
         return sum([len(af_wrap.segments) for af_wrap in self.audio_files.values()])
 
-    def extract_for_training(self, audio_files_dir: str, audio_file_ext: str, export_dir: str, logger: Logger, **kwargs):
+    def extract_for_training(self, audio_files_dir: str, export_dir: str, logger: Logger, **kwargs):
         logger.print("Input annotations' folder:", self.tables_dir)
         logger.print("Input audio folder:", audio_files_dir)
         logger.print("Output audio folder:", export_dir)
 
-
+        audiodir_files = [f for f in os.listdir(audio_files_dir) if os.path.isfile(os.path.join(audio_files_dir,f))
+                                                                 and f.split(".")[-1].lower() in AUDIO_EXTENSION_PRIORITY]
         prog_bar = ProgressBar("Retrieving audio paths", self.n_segments)
         for rel_path, af_wrap in self.audio_files.items():
-            path_no_ext = os.path.join(audio_files_dir, rel_path)
-            audio_path = ".".join([path_no_ext, audio_file_ext])
+            # Get all files starting with this filename
+            audio_candidates = fnmatch.filter(audiodir_files, f"{rel_path}.*")
+            if not audio_candidates:
+                raise Exception(f"No audio files found starting with relative path "\
+                                f"{rel_path} and extension {'|'.join(AUDIO_EXTENSION_PRIORITY)} "\
+                                f"inside {audio_files_dir}.")
+            # Give the priority based on `AUDIO_EXTENSION_PRIORITY`
+            priority = lambda fname: AUDIO_EXTENSION_PRIORITY.index(fname.split(".")[-1].lower())
+            chosen_audio_rel_path = min(audio_candidates, key = priority)
+
+            audio_path = os.path.join(audio_files_dir, chosen_audio_rel_path)
             af = AudioFile(audio_path)
             af.set_date(**kwargs)
             af_wrap.audio_file = af
@@ -368,11 +378,6 @@ if __name__ == "__main__":
                                 dest="audio_files_dir",
                                 help="Path to the root directory of the audio files (default=current working dir).", default=".")
     
-    extract_parser.add_argument("-ie", "--audio-input-ext",
-                                dest="audio_input_ext",
-                                required=True,
-                                help="Key-sensitive extension of the input audio files (default=wav).", default="wav")
-    
     extract_parser.add_argument("-oe", "--audio-output-ext",
                                 dest="audio_output_ext",
                                 help="Key-sensitive extension of the output audio files (default=flac).", default="flac")
@@ -516,6 +521,8 @@ if __name__ == "__main__":
 
         logger = Logger(logfile_path=os.path.join(export_dir, "log.txt"))
 
+        logger.print(args)
+
         logger.print("Started processing...")
         ts = time.time()
 
@@ -537,7 +544,6 @@ if __name__ == "__main__":
             )\
             .extract_for_training(
                 audio_files_dir=args.audio_files_dir,
-                audio_file_ext=args.audio_input_ext,
                 export_dir=export_dir,
                 audio_format=args.audio_output_ext,
                 logger=logger,
@@ -553,6 +559,7 @@ if __name__ == "__main__":
         
             logger.print(f"... end of processing (elapsed {time.time()-ts:.1f}s)")
         except Exception as e:
+            print()
             print("An error occured and the operation was not completed!")
             print(f"Check {logger.logfile_path} for more information.")
             logger.print_exception(e)  
