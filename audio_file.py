@@ -52,6 +52,8 @@ class AudioFile:
         if m:
             self.prefix, self.suffix = re.split(fre, self.basename)
             self.date_time = datetime.strptime(m.group(0), date_format)
+            return
+        self.prefix = f"{self.basename}_"
 
     def segment_path(self, base_path: str, segment: Segment, audio_format: str) -> str:
         """
@@ -66,7 +68,7 @@ class AudioFile:
             date = self.date_time + timedelta(seconds = segment.tstart.s)
             name = f"{self.prefix}{date.strftime(self.date_format)}_{segment.dur.s:05.0f}{self.suffix}_{self.ext}.{audio_format}"
         else:
-            name = f"{self.basename}_{segment.tstart.s:06.0f}_{segment.tend.s:06.0f}_{self.ext}.{audio_format}"
+            name = f"{self.prefix}{segment.tstart.s:06.0f}_{segment.tend.s:06.0f}_{self.ext}.{audio_format}"
         return os.path.join(out_path, name)
 
     @staticmethod

@@ -8,16 +8,18 @@ class Segment(it.Interval):
     Extends the `intervaltree.Interval` class. Uses `bytearray` to represent the 
     label string in the data, in order to make it mutable.
     """
-    tstart: TimeUnit
-    tend: TimeUnit
-    label: str | None
-
-    def __new__(cls, tstart_s: float, tend_s: float, label: str | bytearray = ""):
+    def __new__(cls, tstart_s: float, tend_s: float, label: str | bytearray = "", *args, **kwargs):
         if isinstance(label, str):
             label = label.encode()
         if label is None:
             label = b""
         return super(Segment, cls).__new__(cls, tstart_s, tend_s, bytearray(label))
+    
+    def __deepcopy__(self, memo):
+        cls = self.__class__
+        result = cls.__new__(cls, self.begin, self.end, self.data)
+        memo[id(self)] = result
+        return result
 
     @property
     def tstart(self):
@@ -81,8 +83,29 @@ class Segment(it.Interval):
     
 
 class DurSegment(Segment):
-    def __init__(self, tstart, dur, label):
-        super().__init__(tstart, tstart+dur, label)    
+    def __new__(cls, tstart_s: float, dur_s: float, label, *args, **kwargs):
+        return super().__new__(cls, tstart_s, tstart_s+dur_s, label, *args, **kwargs)
+
+
+    
+
+class ConfidenceSegment(Segment):
+    def __init__(self, tstart_s: float, tend_s: float, label: str | bytearray = "", confidence = 1, *args, **kwargs):
+        self.confidence = float(confidence)
+
+    def __str__(self):
+        return f"{super().__str__()} Confidence: {str(self.confidence)}"
+
+
+
+
+class ConfidenceDurSegment(DurSegment):
+    def __init__(self, tstart_s: float, dur: float, label: str | bytearray = "", confidence = 1, *args, **kwargs):
+        self.confidence = float(confidence)
+
+    def __str__(self):
+        return f"{super().__str__()} Confidence: {str(self.confidence)}"
+
 
 
 

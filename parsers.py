@@ -1,5 +1,5 @@
 from generic_parser import TableParser, Column, FloatColumn
-from segment import DurSegment, Segment
+from segment import DurSegment, Segment, ConfidenceSegment
 from audio_file import AudioFile
 from inspect import signature
 import csv
@@ -133,6 +133,7 @@ class KaleidoscopeParser(TableParser):
     #             yield self.all_audio_files[audio_file_path]
 
 
+
 class BirdNetRavenParser(RavenParser):
     def __init__(self, 
         names = ["birdnet_raven", "bnrv"],
@@ -141,11 +142,16 @@ class BirdNetRavenParser(RavenParser):
         tend = FloatColumn("End Time (s)", 4),
         label = Column("Species Code", 10),
         table_fnmatch = "*.BirdNET.selection.table.txt",
-        segment_type = Segment,
+        segment_type = ConfidenceSegment,
         **kwargs
     ):
         super().__init__(**collect_args(locals())) 
     
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.confidence = FloatColumn("Confidence", 11)
+        self.columns: list[Column] = [self.tstart, self.tend, self.label, self.confidence]
 
 
 class BirdNetCSVParser(TableParser):
@@ -156,10 +162,15 @@ class BirdNetCSVParser(TableParser):
         tend = FloatColumn("end_time", 4),
         label = Column("label", 6),
         table_fnmatch = "*.csv",
-        segment_type = Segment,
+        segment_type = ConfidenceSegment,
         **kwargs
     ):
-        super().__init__(**collect_args(locals())) 
+        super().__init__(**collect_args(locals()))
+    
+    def __post_init__(self):
+        super().__post_init__()
+        self.confidence = FloatColumn("Confidence", 11)
+        self.columns: list[Column] = [self.tstart, self.tend, self.label, self.confidence]
 
 
 available_parsers = [

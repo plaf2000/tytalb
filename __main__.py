@@ -1,4 +1,6 @@
 from __future__ import annotations
+import warnings
+from copy import deepcopy
 from functools import cached_property
 import subprocess
 from parsers import ap_names, get_parser
@@ -44,17 +46,20 @@ class LabelMapper:
         return label
     
 class SegmentsWrapper:
-    def __init__(self, segments: list[Segment] | None  = None, audio_file: AudioFile | None = None):
+    def __init__(self, unique = True, segments: list[Segment] | None  = None, audio_file: AudioFile | None = None):
         if segments is None:
-            segments = []    
+            segments = []
+        self.unique = unique
         self.segments: list[Segment] = segments
         self.audio_file: AudioFile | None = audio_file
+        
 
 class Annotations:
     def __init__(
             self,
             tables_dir: str,
             table_format: str,
+            logger: Logger,
             recursive_subfolders = True,
             **parser_kwargs
         ):
@@ -79,12 +84,26 @@ class Annotations:
             raise AttributeError("No annotations found in the provided folder.")
 
         self.audio_files: dict[str, SegmentsWrapper] = dict()
-
         prog_bar = ProgressBar("Reading tables", len(self.tables_paths))
         for table_path in self.tables_paths:
             for rel_path, segment in zip(self.parser.get_audio_rel_no_ext_paths(table_path, self.tables_dir), 
                                          self.parser.get_segments(table_path)):
-                self.audio_files.setdefault(rel_path, SegmentsWrapper()).segments.append(segment)
+                basename = os.path.basename(rel_path)
+                unique = True
+                if rel_path in self.audio_files.keys():
+                    self.audio_files[rel_path].segments.append(segment)
+                    continue
+                    
+                unique = True
+                for rp in self.audio_files.keys():
+                    bnm = os.path.basename(rp)
+                    if basename == bnm:
+                        logger.print(f"Found two files with the same name: {basename} ({rp} and {rel_path}). "
+                                      "The output files will contain the path to ensure uniquess.")
+                        unique=False
+                        break
+                self.audio_files.setdefault(rel_path, SegmentsWrapper(unique)).segments.append(segment)
+                
         for v in self.audio_files.values():
             v.segments = sorted(v.segments, key=lambda seg: seg.tstart)
         prog_bar.terminate()
@@ -99,7 +118,10 @@ class Annotations:
     def n_segments(self):
         return sum([len(af_wrap.segments) for af_wrap in self.audio_files.values()])
 
-    def extract_for_training(self, audio_files_dir: str, export_dir: str, logger: Logger, **kwargs):
+    def extract_for_training(self, audio_files_dir: str, export_dir: str, logger: Logger, include_path=False, **kwargs):
+        """
+        Extract BIRDNET_AUDIO_DURATION-long chunks to train a custom classifier.
+        """
         logger.print("Input annotations' folder:", self.tables_dir)
         logger.print("Input audio folder:", audio_files_dir)
         logger.print("Output audio folder:", export_dir)
@@ -121,6 +143,12 @@ class Annotations:
             audio_path = os.path.join(audio_files_dir, chosen_audio_rel_path)
             af = AudioFile(audio_path)
             af.set_date(**kwargs)
+            if include_path or not af_wrap.unique:
+                # If the filename is not unique (or the user decides to) include  
+                # the relative path in the output filename.
+                path = os.path.normpath(os.path.dirname(chosen_audio_rel_path))
+                splits = path.split(os.sep)
+                af.prefix = f"{'_'.join(splits)}_{af.prefix}"           
             af_wrap.audio_file = af
             prog_bar.print(1)
         prog_bar.terminate()
@@ -134,8 +162,6 @@ class Annotations:
                     seg.label = label_mapper.map(seg.label)
                     prog_bar.print(1)
             prog_bar.terminate()
-
-
 
         prog_bar = ProgressBar("Exporting segments", self.n_segments)
         proc_logger = ProcLogger(**kwargs)
@@ -173,7 +199,6 @@ def validate(
     """
 
     all_rel_paths = set(ground_truth.audio_files.keys()) | set(to_validate.audio_files.keys())
-
     labels: set[str] = set()
 
     # Union the labels in ground truth and set to validate
@@ -189,10 +214,13 @@ def validate(
     n_labels = len(labels)
 
     if binary and n_labels>2:
+        ground_truth = deepcopy(ground_truth)
+        to_validate = deepcopy(to_validate)
         if positive_labels is None:
             raise AttributeError("Binary classification with more than one label! Please specify the positive label(s).")
         if isinstance(positive_labels, str):
             positive_labels = [positive_labels]
+        found = False
         for bnt in [ground_truth, to_validate]:
             for af_wrapper in bnt.audio_files.values():
                 for seg in af_wrapper.segments:
@@ -201,6 +229,9 @@ def validate(
                         seg.label = NOISE_LABEL
                     else:
                         seg.label = "Positive"
+                        found = True
+        if not found:
+            warnings.warn(f"No label from \"{','.join(positive_labels)}\" found.")
         labels = ["Positive", NOISE_LABEL]
         n_labels = len(labels)          
     
@@ -436,6 +467,12 @@ if __name__ == "__main__":
                                 action=BooleanOptionalAction,
                                 default=False)
     
+    # extract_parser.add_argument("-d", "--debug",
+    #                             dest="debug",
+    #                             help='Whether to log debug informations too.',
+    #                             type=bool,
+    #                             action=BooleanOptionalAction,
+    #                             default=False)
 
     
     """
@@ -506,6 +543,18 @@ if __name__ == "__main__":
                                 action=BooleanOptionalAction,
                                 default=False)
     
+    validate_parser.add_argument("-b", "--binary",
+                                dest="binary",
+                                help='Whether to validate as binary classification. If set, and '\
+                                     'the --positive-lable is not provided, an exception will be raised.',
+                                type=bool,
+                                action=BooleanOptionalAction,
+                                default=False)
+    
+    validate_parser.add_argument("-p", "--positive-labels",
+                                dest="positive_labels",
+                                help='Comma-separated labels considered as positive for the binary classification.',
+                                type=str)
 
     
     args, custom_args = arg_parser.parse_known_args()
@@ -540,6 +589,7 @@ if __name__ == "__main__":
                 tables_dir=args.tables_dir,
                 table_format=args.table_format,
                 recursive_subfolders=args.recursive,
+                logger=logger,
                 **parser_kwargs,
             )\
             .extract_for_training(
@@ -568,21 +618,32 @@ if __name__ == "__main__":
     elif args.action == "train":
         subprocess.run(["python", "train.py"] + custom_args, cwd="BirdNET-Analyzer/")
     elif args.action=="validate":
+
         bnt_gt = Annotations(
             tables_dir=args.tables_dir_gt,
             table_format=args.table_format_gt,
+            logger=Logger(),
             recursive_subfolders=args.recursive
-
         )
 
         bnt_tv = Annotations(
             tables_dir=args.tables_dir_tv,
             table_format=args.table_format_tv,
+            logger=Logger(),
             recursive_subfolders=args.recursive
         )
 
-        stats_time, stats_count =  validate(bnt_gt, bnt_tv, late_start = args.late_start, early_stop = args.early_stop)
-
+        positive_labels = None
+        if args.positive_labels is not None:
+            positive_labels = args.positive_labels.split(",")
+        stats_time, stats_count =  validate(
+            bnt_gt,
+            bnt_tv,
+            binary=args.binary,
+            positive_labels=positive_labels,
+            late_start = args.late_start,
+            early_stop = args.early_stop
+        )
 
         def save_stats(stats: tuple[pd.DataFrame, pd.DataFrame], suffix: str):
             fname = lambda f: os.path.join(args.output_dir, f"{f}_{suffix}.csv")
