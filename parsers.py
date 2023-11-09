@@ -152,6 +152,8 @@ class BirdNetRavenParser(RavenParser):
         super().__post_init__()
         self.confidence = FloatColumn("Confidence", 11)
         self.columns: list[Column] = [self.tstart, self.tend, self.label, self.confidence]
+        self.all_columns.append(self.confidence)
+
 
 
 class BirdNetCSVParser(TableParser):
@@ -171,6 +173,7 @@ class BirdNetCSVParser(TableParser):
         super().__post_init__()
         self.confidence = FloatColumn("Confidence", 11)
         self.columns: list[Column] = [self.tstart, self.tend, self.label, self.confidence]
+        self.all_columns.append(self.confidence)
 
 
 available_parsers = [

@@ -170,6 +170,12 @@ class Annotations:
             af_wrap.audio_file.export_all_birdnet(export_dir, af_wrap.segments, proc_logger=proc_logger, logger=logger, progress_bar=prog_bar, **kwargs)
         prog_bar.terminate()
 
+    def filter_confidence(self, confidence_threshold: float):
+        copy = deepcopy(self)
+
+        
+
+
     def validate(self, other: Annotations, *args, **kwargs):
         validate(ground_truth=self, to_validate=other, *args, **kwargs) 
     
@@ -335,6 +341,8 @@ def validate(
         precision = {}
         recall = {}
         f1score = {}
+        false_positive = {}
+        false_negative = {}
         for i, label in enumerate(labels):
             tp = matrix[i,i]
             mask = np.ones_like(matrix[i], np.bool_)
@@ -343,16 +351,27 @@ def validate(
             fn = np.dot(matrix[i, :], mask)
             p = 0 if tp==0 else tp / (tp + fp)
             r = 0 if tp==0 else tp / (tp + fn)
+            false_positive[label] = fp
+            false_negative[label] = fn
             precision[label] = p
             recall[label] = r
             f1score[label] =  0 if p==0 and r==0 else 2 * (p * r) / (p + r)
         df_matrix = pd.DataFrame(data=matrix, index=labels, columns=labels)
         df_matrix.index.name = "True\\Prediction"
+        data = {
+            "precision": precision,
+            "recall": recall,
+            "f1 score": f1score,
+            "false posit ive": false_positive,
+            "false negative": false_negative
+        }
+        
         df_metrics =  pd.DataFrame(
-            {"precision": precision, "recall": recall, "f1 score": f1score},
+            data,
             index=labels,
-            columns=["precision","recall","f1 score"]
         )
+
+
         return df_matrix, df_metrics
 
     return  stats(conf_time_matrix), stats(conf_count_matrix)
@@ -525,7 +544,7 @@ if __name__ == "__main__":
                                 help="Wether to look for tables inside the root directory recursively or not (default=True).",
                                 type=bool,
                                 action=BooleanOptionalAction,
-                                default=False)
+                                default=True)
 
     validate_parser.add_argument("-ls", "--late-start",
                                 dest="late_start",
@@ -546,7 +565,7 @@ if __name__ == "__main__":
     validate_parser.add_argument("-b", "--binary",
                                 dest="binary",
                                 help='Whether to validate as binary classification. If set, and '\
-                                     'the --positive-lable is not provided, an exception will be raised.',
+                                     'the POSITIVE_LABEL is not provided, an exception will be raised.',
                                 type=bool,
                                 action=BooleanOptionalAction,
                                 default=False)
@@ -555,6 +574,27 @@ if __name__ == "__main__":
                                 dest="positive_labels",
                                 help='Comma-separated labels considered as positive for the binary classification.',
                                 type=str)
+    
+    validate_parser.add_argument("-cts", "--conf-thresholds-start",
+                                 dest="confidence_thresholds_start",
+                                 help="Start range for confidence thresholds.",
+                                 type=float,
+                                 default=0)
+    
+    validate_parser.add_argument("-cte", "--conf-thresholds-end",
+                                 dest="confidence_thresholds_end",
+                                 help="End range for confidence thresholds",
+                                 type=float,
+                                 default=1)
+    
+    validate_parser.add_argument("-ct", "--conf-thresholds",
+                                 dest="confidence_thresholds",
+                                 help="Number of thresholds to filter the data to validate "\
+                                      "(linearly distributed between CONFIDENCE_THRESHOLDS_START and "\
+                                      "CONFIDENCE_THRESHOLDS_END). The table format must have a field "\
+                                      "for the confidence and it has to be defined in the parser.",
+                                 type=int,
+                                 default=None)
 
     
     args, custom_args = arg_parser.parse_known_args()
@@ -633,12 +673,18 @@ if __name__ == "__main__":
             recursive_subfolders=args.recursive
         )
 
+        if args.confidence_thresholds is not None:
+            thresholds = np.linspace(args.confidence_thresholds_start, args.confidence_thresholds_end, args.confidence_thresholds)
+            for t in thresholds:
+                print(t)
+            exit()
+
         positive_labels = None
         if args.positive_labels is not None:
             positive_labels = args.positive_labels.split(",")
         stats_time, stats_count =  validate(
-            bnt_gt,
-            bnt_tv,
+            ground_truth=bnt_gt,
+            to_validate=bnt_tv,
             binary=args.binary,
             positive_labels=positive_labels,
             late_start = args.late_start,
@@ -653,6 +699,9 @@ if __name__ == "__main__":
         
         save_stats(stats_time, "time")
         save_stats(stats_count, "count")
+
+        
+
 
     
 
