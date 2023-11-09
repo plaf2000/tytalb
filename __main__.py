@@ -8,7 +8,7 @@ from generic_parser import TableParser
 from audio_file import AudioFile
 from loggers import ProcLogger, Logger, ProgressBar 
 from variables import BIRDNET_AUDIO_DURATION, BIRDNET_SAMPLE_RATE, NOISE_LABEL, AUDIO_EXTENSION_PRIORITY
-from segment import Segment
+from segment import Segment, ConfidenceSegment
 from argparse import ArgumentParser, BooleanOptionalAction
 from datetime import datetime
 import pandas as pd
@@ -171,7 +171,15 @@ class Annotations:
         prog_bar.terminate()
 
     def filter_confidence(self, confidence_threshold: float):
+        """
+        Returns an `Annotation` deepcopy object where all segments below the
+        confidence threshold are removed.
+        """
         copy = deepcopy(self)
+        for rel_path in copy.audio_files.keys():
+            segs = copy.audio_files[rel_path].segments
+            copy.audio_files[rel_path].segments = [s for s in segs if s.confidence >= confidence_threshold]
+        return copy
 
         
 
@@ -362,7 +370,7 @@ def validate(
             "precision": precision,
             "recall": recall,
             "f1 score": f1score,
-            "false posit ive": false_positive,
+            "false positive": false_positive,
             "false negative": false_negative
         }
         
@@ -673,23 +681,44 @@ if __name__ == "__main__":
             recursive_subfolders=args.recursive
         )
 
-        if args.confidence_thresholds is not None:
-            thresholds = np.linspace(args.confidence_thresholds_start, args.confidence_thresholds_end, args.confidence_thresholds)
-            for t in thresholds:
-                print(t)
-            exit()
-
         positive_labels = None
         if args.positive_labels is not None:
             positive_labels = args.positive_labels.split(",")
-        stats_time, stats_count =  validate(
-            ground_truth=bnt_gt,
-            to_validate=bnt_tv,
-            binary=args.binary,
-            positive_labels=positive_labels,
-            late_start = args.late_start,
-            early_stop = args.early_stop
-        )
+
+        if args.confidence_thresholds is not None:
+            thresholds = np.linspace(args.confidence_thresholds_start, args.confidence_thresholds_end, args.confidence_thresholds)
+            stats_time: list[pd.DataFrame, pd.DataFrame] = [pd.DataFrame(), pd.DataFrame()]
+            stats_count: list[pd.DataFrame, pd.DataFrame] = [pd.DataFrame(), pd.DataFrame()]
+            for t in thresholds:
+                stime, scount = validate(
+                    ground_truth = bnt_gt,
+                    to_validate = bnt_tv.filter_confidence(t),
+                    binary = args.binary,
+                    positive_labels = positive_labels,
+                    late_start = args.late_start,
+                    early_stop = args.early_stop,
+                )
+
+                for s in [stime, scount]:
+                    for df in s:
+                        df["Confience threshold"] = t
+                        
+
+                for i, df in enumerate(stime):
+                    stats_time[i] = pd.concat([stats_time[i], df])
+
+                for i, df in enumerate(scount):
+                    stats_count[i] = pd.concat([stats_count[i], df])
+                
+        else:
+            stats_time, stats_count = validate(
+                ground_truth = bnt_gt,
+                to_validate = bnt_tv,
+                binary = args.binary,
+                positive_labels = positive_labels,
+                late_start = args.late_start,
+                early_stop = args.early_stop
+            )
 
         def save_stats(stats: tuple[pd.DataFrame, pd.DataFrame], suffix: str):
             fname = lambda f: os.path.join(args.output_dir, f"{f}_{suffix}.csv")

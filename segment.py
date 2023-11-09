@@ -17,7 +17,7 @@ class Segment(it.Interval):
     
     def __deepcopy__(self, memo):
         cls = self.__class__
-        result = cls.__new__(cls, self.begin, self.end, self.data)
+        result = cls(self.begin, self.end, self.data)
         memo[id(self)] = result
         return result
 
@@ -96,6 +96,11 @@ class ConfidenceSegment(Segment):
     def __str__(self):
         return f"{super().__str__()} Confidence: {str(self.confidence)}"
 
+    def __deepcopy__(self, memo):
+        copy = super().__deepcopy__(memo)
+        copy.confidence = self.confidence
+        return copy
+
 
 
 
@@ -105,6 +110,11 @@ class ConfidenceDurSegment(DurSegment):
 
     def __str__(self):
         return f"{super().__str__()} Confidence: {str(self.confidence)}"
+
+    def __deepcopy__(self, memo):
+        copy = super().__deepcopy__(memo)
+        copy.confidence = self.confidence
+        return copy
 
 
 
