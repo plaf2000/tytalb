@@ -213,6 +213,7 @@ class AudioFile:
         """
 
         count = 0
+        old_count = len(os.listdir(os.path.dirname(segment_list)))
 
         with open(segment_list) as fp:
             csv_reader = csv.reader(fp)
@@ -234,15 +235,18 @@ class AudioFile:
                         tend_abs = tstart + tend_f
                         seg = Segment(tstart_abs, tend_abs, label)
                         out_path = self.segment_path(base_path, seg, ext)
-                        self.export_segment_ffmpeg(unsegmented_fpath, out_path, ss = tstart_f, to=tend_f)
-                        count += 1
+                        if not os.path.isfile(out_path):
+                            self.export_segment_ffmpeg(unsegmented_fpath, out_path, ss = tstart_f, to=tend_f)
+                            count += 1
                     os.remove(fpath)
                     continue
 
                 seg = Segment(tstart_abs, tend_abs, label)
                 out_path = self.segment_path(base_path, seg, ext)
-                count += 1
+                if os.path.isfile(out_path):
+                    continue
 
+                count += 1
 
                 if "wav" == ext.lower():
                     os.replace(fpath, out_path)
@@ -252,6 +256,7 @@ class AudioFile:
 
                 self.export_segment_ffmpeg(fpath, out_path)
                 os.remove(fpath)
+                    
         os.remove(segment_list)
         return count
 
@@ -345,6 +350,7 @@ class AudioFile:
                 segment_list_prefix=tmppath(""),
                 **kwargs
             )
+
             proc_logger.log_process(
                 proc,
                 f"Chunked large file into smaller ones following the timestamps: {tstamps}",
@@ -395,9 +401,10 @@ class AudioFile:
                                 ):
                                     n_labelled_chunks += 1
                                              
-                        elif seg.dur > length_threshold or overlap == 0:
-                            # If the segment is very long (above length_threshold) or overlap is 0, use the faster segment ffmpeg command
-                            # In this case we won't have any overlap (this command doesn't allow to do so).
+                        elif (seg.dur > length_threshold or overlap == 0):
+                            # If the segment is very long (above length_threshold) or overlap is 0, and the output format is wav,
+                            # use the faster segment ffmpeg command.
+                            # The command doesn't allow to have any overlap.
 
                             segment_path = self.segment_path(base_path, seg, audio_format)
                             out_dir = os.path.dirname(segment_path)
@@ -476,7 +483,8 @@ class AudioFile:
                         # If there are no segments in the file chunk,
                         # it can be splitted into small segments and exported
                         # as noise for training.
-
+                        to = (tend_f - tstart_f) - ((tend_f - tstart_f) % BIRDNET_AUDIO_DURATION)
+                        
                         basename_noise_split = os.path.basename(fpath).split(".")
                         os.makedirs(basepath_noise, exist_ok=True)
                         basepath_out = os.path.join(basepath_noise, ".".join(basename_noise_split[:-1]))
@@ -484,7 +492,6 @@ class AudioFile:
 
                         out_path = f"{basepath_out}%04d.{audio_format}"
 
-                        to = (tend_f - tstart_f) - ((tend_f - tstart_f) % BIRDNET_AUDIO_DURATION)
 
                         temp_seglist = os.path.join(basepath_noise, "list.csv")
                         seglist_prefix = os.path.join(basepath_noise, "")
@@ -499,12 +506,14 @@ class AudioFile:
                             segment_list_prefix = seglist_prefix,
                             **kwargs
                         )
+
                         seg_noise = Segment(tstart_f, tend_f, NOISE_LABEL)
                         proc_logger.log_process(
                             proc,
                             f"{BIRDNET_AUDIO_DURATION.s}s-segment from {seg_noise} in file {self.path} exported to: {out_path}",
                             f"Error while exporting {seg_noise} into segments:"
                         )
+
 
                         noise_chunks += self.rename_or_delete_segments(
                             base_path,
@@ -514,10 +523,8 @@ class AudioFile:
                             tstart_f,
                         )
 
+                        
 
-
-
-        
         logger.print(
             f"{self.path}:",
             n_segments_original,

@@ -369,9 +369,6 @@ def validate(
             df_matrix[NOISE_LABEL] = df_matrix[NOISE_LABEL].astype("Int64")
         df_matrix.loc[NOISE_LABEL, NOISE_LABEL] = pd.NA
 
-
-        # print(df_matrix[NOISE_LABEL])
-        # df_matrix[NOISE_LABEL] = pd.array(df_matrix.loc[NOISE_LABEL], dtype="Int64")
         df_matrix.index.name = "True\\Prediction"
         data = {
             "precision": precision,
