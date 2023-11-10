@@ -143,6 +143,22 @@ options:
                         Path to the output directory (default=current working dir).
   -re RECURSIVE, --recursive RECURSIVE
                         Wether to look for tables inside the root directory recursively or not (default=True).
+  -ls, --late-start, --no-late-start
+                        Whether to not consider the interval between the start of the ground truth recording and the first annotation (default =    
+                        False)
+  -es, --early-stop, --no-early-stop
+                        Whether to not consider the interval between the last annotation and the end of the recording (default = False)
+  -b, --binary, --no-binary
+                        Whether to validate as binary classification. If set, and the POSITIVE_LABEL is not provided, an exception will be raised.  
+  -p POSITIVE_LABELS, --positive-labels POSITIVE_LABELS
+                        Comma-separated labels considered as positive for the binary classification.
+  -cts CONFIDENCE_THRESHOLDS_START, --conf-thresholds-start CONFIDENCE_THRESHOLDS_START
+                        Start range for confidence thresholds.
+  -cte CONFIDENCE_THRESHOLDS_END, --conf-thresholds-end CONFIDENCE_THRESHOLDS_END
+                        End range for confidence thresholds
+  -ct CONFIDENCE_THRESHOLDS, --conf-thresholds CONFIDENCE_THRESHOLDS
+                        Number of thresholds to filter the data to validate (linearly distributed between CONFIDENCE_THRESHOLDS_START and
+                        CONFIDENCE_THRESHOLDS_END). The table format must have a field for the confidence and it has to be defined in the parser.
 ```
 
 ## Problems
