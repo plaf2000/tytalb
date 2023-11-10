@@ -74,6 +74,9 @@ options:
                         Whether to not consider the interval between the start of the recording and the first annotation (default = False)
   -es EARLY_STOP, --early-stop EARLY_STOP
                         Whether to not consider the interval between the last annotation and the end of the recording (default = False)
+  -ip, --include-path, --no-include-path
+                        Whether to include the relative path in the output file name (default = False). If two filenames are not unique, this will  
+                        be done automatically.
 ```
 
 the `-l` or `--label-settings` allow to easily manage different labels without the need to delete or rename folders.
