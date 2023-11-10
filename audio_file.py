@@ -4,6 +4,7 @@ import soundfile as sf
 from math import ceil
 import os
 import tempfile
+import random
 
 import numpy as np 
 from segment import Segment
@@ -29,6 +30,7 @@ dateel_lengths = {
     "%f": 6,
 }
 
+
 class AudioFile:
     def __init__(self, path: str):
         if not os.path.isfile(path):
@@ -37,7 +39,7 @@ class AudioFile:
         self.splits = os.path.basename(path).split(".")
         self.basename = self.splits[0]
         self.ext = self.splits[-1].lower()
-        self.duration = sf.info(self.path).duration
+        self.duration = TimeUnit(sf.info(self.path).duration)
         self.date_time = None
     
     def set_date(self, date_format:str = "%Y%m%d_%H%M%S", **kwargs):
@@ -157,7 +159,7 @@ class AudioFile:
 
         if isinstance(times, list) or isinstance(times, np.ndarray):
             if len(times) == 0:
-                # If no times to split, add a timestamp 0 to guarantee success. TODO: Make this nicer.
+                # If no times to split, add a timestamp 0 to guarantee success. TODO: Maybe make this nicer.
                 times = [0]
             args += ["-segment_times", ",".join([str(t) for t in times])]
         else:
@@ -193,6 +195,7 @@ class AudioFile:
             unsegmented_fpath: str,
             segment_list: str = None,
             tstart: TimeUnit = None,
+            delete_prob: float | None = None,
             **kwargs,
         ):
         """
@@ -213,7 +216,6 @@ class AudioFile:
         """
 
         count = 0
-        old_count = len(os.listdir(os.path.dirname(segment_list)))
 
         with open(segment_list) as fp:
             csv_reader = csv.reader(fp)
@@ -235,7 +237,7 @@ class AudioFile:
                         tend_abs = tstart + tend_f
                         seg = Segment(tstart_abs, tend_abs, label)
                         out_path = self.segment_path(base_path, seg, ext)
-                        if not os.path.isfile(out_path):
+                        if not os.path.isfile(out_path) and (delete_prob is not None and random.random() < delete_prob):
                             self.export_segment_ffmpeg(unsegmented_fpath, out_path, ss = tstart_f, to=tend_f)
                             count += 1
                     os.remove(fpath)
@@ -243,7 +245,8 @@ class AudioFile:
 
                 seg = Segment(tstart_abs, tend_abs, label)
                 out_path = self.segment_path(base_path, seg, ext)
-                if os.path.isfile(out_path):
+                if os.path.isfile(out_path) or (delete_prob is not None and random.random() >= delete_prob):
+                    os.remove(fpath)
                     continue
 
                 count += 1
@@ -271,6 +274,7 @@ class AudioFile:
             length_threshold_s = 100 * BIRDNET_AUDIO_DURATION.s,
             late_start: bool = False,
             early_stop: bool = False,
+            noise_perc: float = .1,
             proc_logger: ProcLogger = ProcLogger(),
             logger: Logger = Logger(),
             progress_bar: ProgressBar = None,
@@ -298,7 +302,7 @@ class AudioFile:
         birdnet_instance.export_all_birdnet("./your/output/directory", segments, audio_format="wav", overlap_s=1)
         ```    
         """
- 
+        random.seed(self.basename)
         length_threshold = TimeUnit(length_threshold_s)
         segments = sorted([s.birdnet_pad() for s in segments], key=lambda seg: seg.tstart)
         annotation_start = 0 if not late_start else segments[0].tstart
@@ -309,23 +313,32 @@ class AudioFile:
         segments = [seg for seg in segments if seg.label != NOISE_LABEL]
         n_segments = len(segments)
 
-        for seg in segments:
-            as_int = int(ceil(seg.tend.s))
-            if  as_int > max_tend:
-                max_tend = as_int
+        # for seg in segments:
+        #     as_int = int(ceil(seg.tend.s))
+        #     if  as_int > max_tend:
+        #         max_tend = as_int
 
         kwargs["resample"] = resample
 
         # Boolean mask that for each second of the original file,
         # stores whether at least one segment overlaps or not.
-        is_segment = np.zeros(max_tend + 1, np.bool_)
+        is_segment = np.zeros(int(ceil(self.duration)), np.bool_)
 
         for seg in segments:
             start = int(seg.tstart.s)
             end = int(ceil(seg.tend.s))
             is_segment[start:end] = True
         is_noise = ~is_segment
+
         diff = np.diff(is_noise.astype(np.int8), prepend=1, append=1)
+        noise_tot_dur = TimeUnit(np.sum(is_noise))
+        labelled_tot_dur = self.duration - noise_tot_dur
+        noise_ratio = noise_tot_dur / self.duration
+        noise_perc = max(min(1, noise_perc), 0)
+        noise_export_prob = min(1, noise_perc / noise_ratio)
+
+
+
 
         # Timestamps where the insterval changes from being 
         # segments-only to noise-only (and vice versa).
@@ -514,19 +527,28 @@ class AudioFile:
                             f"Error while exporting {seg_noise} into segments:"
                         )
 
-
                         noise_chunks += self.rename_or_delete_segments(
                             base_path,
                             NOISE_LABEL,
                             fpath,
                             temp_seglist,
                             tstart_f,
+                            delete_prob = noise_export_prob
                         )
 
-                        
-
+        logger.print(f"{self.path}:")    
         logger.print(
-            f"{self.path}:",
+            "\t",
+            f"{noise_tot_dur}s",
+            "of noise,",
+            f"{labelled_tot_dur}s",
+            "of lables.",
+            "Noise to duration ratio:",
+            f"{noise_ratio:.1%}",
+        )
+        logger.print("\t",noise_export_prob,noise_perc)
+        logger.print(
+            "\t",
             n_segments_original,
             "annotated segments,",
             n_segments,
@@ -534,5 +556,5 @@ class AudioFile:
             n_labelled_chunks,
             "labelled chunks,",
             noise_chunks,
-            "noise chunks"
+            "noise chunks",
         ) 
