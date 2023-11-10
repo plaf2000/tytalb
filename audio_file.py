@@ -539,14 +539,13 @@ class AudioFile:
         logger.print(f"{self.path}:")    
         logger.print(
             "\t",
-            f"{noise_tot_dur}s",
+            f"{noise_tot_dur:.0f}s",
             "of noise,",
-            f"{labelled_tot_dur}s",
+            f"{labelled_tot_dur:.0f}s",
             "of lables.",
             "Noise to duration ratio:",
             f"{noise_ratio:.1%}",
         )
-        logger.print("\t",noise_export_prob,noise_perc)
         logger.print(
             "\t",
             n_segments_original,
@@ -558,3 +557,10 @@ class AudioFile:
             noise_chunks,
             "noise chunks",
         ) 
+        exported_noise_dur = noise_chunks * BIRDNET_AUDIO_DURATION
+        logger.print(
+            "\t",
+            f"{exported_noise_dur/noise_tot_dur:.1%}",
+            "of noise exported,",f"{exported_noise_dur/self.duration:.1%}",
+            "of the total duration"
+        )
