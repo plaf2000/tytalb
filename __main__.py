@@ -352,6 +352,8 @@ def validate(
         false_positive = {}
         false_negative = {}
         for i, label in enumerate(labels):
+            if (binary or n_labels==2) and label == NOISE_LABEL:
+                continue
             tp = matrix[i,i]
             mask = np.ones_like(matrix[i], np.bool_)
             mask[i] = 0
@@ -376,7 +378,6 @@ def validate(
         
         df_metrics =  pd.DataFrame(
             data,
-            index=labels,
         )
 
 
