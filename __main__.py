@@ -691,6 +691,7 @@ if __name__ == "__main__":
             stats_time: list[pd.DataFrame, pd.DataFrame] = [pd.DataFrame(), pd.DataFrame()]
             stats_count: list[pd.DataFrame, pd.DataFrame] = [pd.DataFrame(), pd.DataFrame()]
             for t in thresholds:
+                t = round(t, 4)
                 stime, scount = validate(
                     ground_truth = bnt_gt,
                     to_validate = bnt_tv.filter_confidence(t),
