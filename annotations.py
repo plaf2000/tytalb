@@ -256,7 +256,7 @@ def validate(
     
     # Confusion matrices for time and count
     conf_time_matrix = np.zeros((n_labels, n_labels), np.float64)
-    conf_count_matrix = np.zeros((n_labels, n_labels), np.float64)
+    conf_count_matrix = np.zeros((n_labels, n_labels), np.int64)
 
     # Shortcuts for setting the confusion matrices
     def set_conf_time(label_truth, label_prediction, duration):
@@ -341,8 +341,6 @@ def validate(
             tot_overlapping = sum([Segment.from_interval(s).overlapping_time(seg_gt) for s in t])
             set_conf_time(NOISE_LABEL, seg_tv.label, seg_tv.dur - tot_overlapping)
 
-        # Note that TN is never set (therefore 0)
-        # TODO: Maybe implement this?
     
     def stats(matrix):
         precision = {}
@@ -366,6 +364,14 @@ def validate(
             recall[label] = r
             f1score[label] =  0 if p==0 and r==0 else 2 * (p * r) / (p + r)
         df_matrix = pd.DataFrame(data=matrix, index=labels, columns=labels)
+        # TODO: TN is never set. Maybe should be computed, but not so relevant.
+        if df_matrix.loc[NOISE_LABEL, NOISE_LABEL].dtype == np.int64:
+            df_matrix[NOISE_LABEL] = df_matrix[NOISE_LABEL].astype("Int64")
+        df_matrix.loc[NOISE_LABEL, NOISE_LABEL] = pd.NA
+
+
+        # print(df_matrix[NOISE_LABEL])
+        # df_matrix[NOISE_LABEL] = pd.array(df_matrix.loc[NOISE_LABEL], dtype="Int64")
         df_matrix.index.name = "True\\Prediction"
         data = {
             "precision": precision,
