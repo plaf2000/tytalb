@@ -335,7 +335,7 @@ class AudioFile:
         labelled_tot_dur = self.duration - noise_tot_dur
         noise_ratio = noise_tot_dur / self.duration
         noise_perc = max(min(1, noise_perc), 0)
-        noise_export_prob = min(1, noise_perc / noise_ratio)
+        noise_export_prob = min(1, noise_ratio and noise_perc / noise_ratio or 0)
 
 
 
@@ -560,7 +560,7 @@ class AudioFile:
         exported_noise_dur = noise_chunks * BIRDNET_AUDIO_DURATION
         logger.print(
             "\t",
-            f"{exported_noise_dur/noise_tot_dur:.1%}",
+            f"{(noise_tot_dur and exported_noise_dur/noise_tot_dur or 0):.1%}",
             "of noise exported,",f"{exported_noise_dur/self.duration:.1%}",
             "of the total duration"
         )
