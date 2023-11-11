@@ -86,6 +86,18 @@ class RavenParser(TableParser):
     ):
         super().__init__(**collect_args(locals())) 
 
+    def get_segments(self, table_path: str, *args, **kwargs):
+        seen_segments = set()
+        with open(table_path) as fp:
+            csvr = csv.reader(fp, delimiter=self.delimiter)
+            if self.header:
+                theader = next(csvr)
+                self.set_coli(theader)
+            for row in csvr:
+                segment = self.get_segment(row)
+                if (next_segment := (segment.tstart, segment.tend)) not in seen_segments:
+                    yield segment
+                    seen_segments.add(next_segment)
 
 
 class KaleidoscopeParser(TableParser):
