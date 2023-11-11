@@ -16,8 +16,10 @@ class Column:
         """
         Finds the column in the header.
         """
-        self.colindex = header_row.index(self.colname)
-
+        try:
+            self.colindex = header_row.index(self.colname)
+        except ValueError as e:
+            raise ValueError(f"'{self.colname}' not found in the header row: {e}")
     def get_val(self, row: list):
         """
         Given the row's cells as list, return the value of the corresponding column.
@@ -102,16 +104,14 @@ class TableParser:
         """
         table_basename = os.path.basename(table_path)
         table_subpath = os.path.dirname(table_path)[len(tables_base_path):]
+        while table_subpath.startswith(os.sep):
+            table_subpath = table_subpath[1:]
         audio_rel_no_ext_paths = os.path.join(table_subpath, table_basename.split(".")[0])
         with open(table_path) as fp:
             csvr = csv.reader(fp, delimiter=self.delimiter)
             for _ in csvr:
                 yield audio_rel_no_ext_paths
 
-
-
-
-            
 
     def is_table(self, table_path: str) -> bool:
         """
