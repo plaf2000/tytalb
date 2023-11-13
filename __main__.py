@@ -239,6 +239,13 @@ if __name__ == "__main__":
                                       "for the confidence and it has to be defined in the parser.",
                                  type=int,
                                  default=None)
+    
+    validate_parser.add_argument("-ot", "--overlapping-threshold",
+                                 dest="overlapping_threshold_s",
+                                 help="Overlap threshold in seconds between two segments to consider them (correctly) classified."\
+                                      "(default = 0.5).",
+                                 type=float,
+                                 default=.5)
 
     
     args, custom_args = arg_parser.parse_known_args()
@@ -335,6 +342,7 @@ if __name__ == "__main__":
                     positive_labels = positive_labels,
                     late_start = args.late_start,
                     early_stop = args.early_stop,
+                    overlapping_threshold_s = args.overlapping_threshold_s
                 )
 
                 for s in [stime, scount]:
@@ -354,7 +362,8 @@ if __name__ == "__main__":
                 binary = args.binary,
                 positive_labels = positive_labels,
                 late_start = args.late_start,
-                early_stop = args.early_stop
+                early_stop = args.early_stop,
+                overlapping_threshold_s = args.overlapping_threshold_s
             )
 
         def save_stats(stats: tuple[pd.DataFrame, pd.DataFrame], suffix: str):

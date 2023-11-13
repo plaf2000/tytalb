@@ -95,7 +95,7 @@ class RavenParser(TableParser):
                 self.set_coli(theader)
             for row in csvr:
                 segment = self.get_segment(row)
-                if (next_segment := (segment.tstart, segment.tend)) not in seen_segments:
+                if (next_segment := (segment.tstart, segment.tend, segment.label)) not in seen_segments:
                     yield segment
                     seen_segments.add(next_segment)
 
