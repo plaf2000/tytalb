@@ -130,6 +130,13 @@ if __name__ == "__main__":
                                 action=BooleanOptionalAction,
                                 default=False)
     
+    extract_parser.add_argument("-so", "--stats-only",
+                                dest="stats_only",
+                                help='Whether to calculate only input data statistics',
+                                type=bool,
+                                action=BooleanOptionalAction,
+                                default=False)
+    
     # extract_parser.add_argument("-d", "--debug",
     #                             dest="debug",
     #                             help='Whether to log debug informations too.',
@@ -296,7 +303,8 @@ if __name__ == "__main__":
                 date_format=args.date_format,
                 late_start = args.late_start,
                 early_stop = args.early_stop,
-                include_path = args.include_path
+                include_path = args.include_path,
+                stats_only = args.stats_only,
             )
         
             logger.print(f"... end of processing (elapsed {time.time()-ts:.1f}s)")

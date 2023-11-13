@@ -8,6 +8,7 @@ import fnmatch
 import re
 from parsers import get_parser
 from loggers import ProcLogger, Logger, ProgressBar 
+from stats import calculate_and_save_stats
 from variables import NOISE_LABEL, AUDIO_EXTENSION_PRIORITY, BIRDNET_AUDIO_DURATION
 import pandas as pd
 import numpy as np
@@ -113,7 +114,7 @@ class Annotations:
     def n_segments(self):
         return sum([len(af_wrap.segments) for af_wrap in self.audio_files.values()])
 
-    def extract_for_training(self, audio_files_dir: str, export_dir: str, logger: Logger, include_path=False, **kwargs):
+    def extract_for_training(self, audio_files_dir: str, export_dir: str, logger: Logger, include_path=False, stats_only=False, **kwargs):
         """
         Extract BIRDNET_AUDIO_DURATION-long chunks to train a custom classifier.
         """
@@ -163,11 +164,23 @@ class Annotations:
                     prog_bar.print(1)
             prog_bar.terminate()
 
-        prog_bar = ProgressBar("Exporting segments", self.n_segments)
+        prog_bar = ProgressBar("Generating statistics" if stats_only else "Exporting segments", self.n_segments)
         proc_logger = ProcLogger(**kwargs)
         logger.print("Found", len(self.audio_files), "audio files.")
+
+        stats = {} 
         for af_wrap in self.audio_files.values():
-            af_wrap.audio_file.export_all_birdnet(export_dir, af_wrap.segments, proc_logger=proc_logger, logger=logger, progress_bar=prog_bar, **kwargs)
+            for s in af_wrap.segments:
+                intervals = s.birdnet_pad()
+                if (label := intervals[2].decode()) not in stats.keys():           
+                    stats[label] = intervals[1] - intervals[0]
+                else:
+                    stats[label] += intervals[1] - intervals[0]
+                
+            if not stats_only:
+                af_wrap.audio_file.export_all_birdnet(export_dir, af_wrap.segments, proc_logger=proc_logger, logger=logger, progress_bar=prog_bar, **kwargs)
+        
+        calculate_and_save_stats(stats, export_dir)
         prog_bar.terminate()
 
     def filter_confidence(self, confidence_threshold: float):
