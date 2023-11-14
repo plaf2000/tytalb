@@ -237,7 +237,7 @@ class AudioFile:
                         tend_abs = tstart + tend_f
                         seg = Segment(tstart_abs, tend_abs, label)
                         out_path = self.segment_path(base_path, seg, ext)
-                        if not os.path.isfile(out_path) and (delete_prob is not None and random.random() < delete_prob):
+                        if not os.path.isfile(out_path) and (delete_prob is not None and random.random() >= delete_prob):
                             self.export_segment_ffmpeg(unsegmented_fpath, out_path, ss = tstart_f, to=tend_f)
                             count += 1
                     os.remove(fpath)
@@ -245,7 +245,7 @@ class AudioFile:
 
                 seg = Segment(tstart_abs, tend_abs, label)
                 out_path = self.segment_path(base_path, seg, ext)
-                if os.path.isfile(out_path) or (delete_prob is not None and random.random() >= delete_prob):
+                if os.path.isfile(out_path) or (delete_prob is not None and random.random() < delete_prob):
                     os.remove(fpath)
                     continue
 
@@ -274,7 +274,7 @@ class AudioFile:
             length_threshold_s = 100 * BIRDNET_AUDIO_DURATION.s,
             late_start: bool = False,
             early_stop: bool = False,
-            noise_perc: float = .1,
+            noise_export_ratio: float = .1,
             proc_logger: ProcLogger = ProcLogger(),
             logger: Logger = Logger(),
             progress_bar: ProgressBar = None,
@@ -307,6 +307,7 @@ class AudioFile:
         segments = sorted([s.birdnet_pad() for s in segments], key=lambda seg: seg.tstart)
         annotation_start = 0 if not late_start else segments[0].tstart
         annotation_end = self.duration if not early_stop else max([s.tend for s in segments])
+        duration = annotation_end - annotation_start
         overlap = TimeUnit(overlap_s)
         max_tend = 0
         n_segments_original = len(segments)
@@ -331,11 +332,11 @@ class AudioFile:
         is_noise = ~is_segment
 
         diff = np.diff(is_noise.astype(np.int8), prepend=1, append=1)
-        noise_tot_dur = TimeUnit(np.sum(is_noise))
-        labelled_tot_dur = self.duration - noise_tot_dur
+        noise_tot_dur = TimeUnit(np.sum(is_noise[int(annotation_start):int(annotation_end)]))
+        labelled_tot_dur = duration - noise_tot_dur
         noise_ratio = noise_tot_dur / self.duration
-        noise_perc = max(min(1, noise_perc), 0)
-        noise_export_prob = min(1, noise_ratio and noise_perc / noise_ratio or 0)
+        noise_export_ratio = max(min(1, noise_export_ratio), 0)
+        noise_export_prob = min(1, noise_ratio and noise_export_ratio / noise_ratio or 0)
 
 
 
@@ -521,20 +522,19 @@ class AudioFile:
                         )
 
                         seg_noise = Segment(tstart_f, tend_f, NOISE_LABEL)
-                        proc_logger.log_process(
+                        if proc_logger.log_process(
                             proc,
                             f"{BIRDNET_AUDIO_DURATION.s}s-segment from {seg_noise} in file {self.path} exported to: {out_path}",
                             f"Error while exporting {seg_noise} into segments:"
-                        )
-
-                        noise_chunks += self.rename_or_delete_segments(
-                            base_path,
-                            NOISE_LABEL,
-                            fpath,
-                            temp_seglist,
-                            tstart_f,
-                            delete_prob = noise_export_prob
-                        )
+                        ):
+                            noise_chunks += self.rename_or_delete_segments(
+                                base_path,
+                                NOISE_LABEL,
+                                fpath,
+                                temp_seglist,
+                                tstart_f,
+                                delete_prob = (None if not noise_export_prob else 1 - noise_export_prob)
+                            )
 
         logger.print(f"{self.path}:")    
         logger.print(
@@ -563,4 +563,13 @@ class AudioFile:
             f"{(noise_tot_dur and exported_noise_dur/noise_tot_dur or 0):.1%}",
             "of noise exported,",f"{exported_noise_dur/self.duration:.1%}",
             "of the total duration"
+        )
+
+        logger.print(
+            "\t",
+            noise_tot_dur,
+            labelled_tot_dur,
+            noise_ratio,
+            noise_export_ratio,
+            noise_export_prob,
         )
