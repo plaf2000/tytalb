@@ -19,7 +19,7 @@ from units import TimeUnit
 class LabelMapper:
     def __init__(self, label_settings_path: str, *args, **kwargs):
         try:
-            with open(label_settings_path) as fp:
+            with open(label_settings_path, encoding='utf-8') as fp:
                 self.json_obj = json.load(fp)
         except:
             self.json_obj = {}
@@ -168,19 +168,22 @@ class Annotations:
         proc_logger = ProcLogger(**kwargs)
         logger.print("Found", len(self.audio_files), "audio files.")
 
+        stats_pad = {}
         stats = {} 
         for af_wrap in self.audio_files.values():
-            for s in af_wrap.segments:
-                segment = s.birdnet_pad()
+            for segment in af_wrap.segments:
+                segment_pad = segment.birdnet_pad()
                 if (label := segment.label) not in stats.keys():           
                     stats[label] = segment.dur
+                    stats_pad[label] = segment_pad.dur
                 else:
                     stats[label] += segment.dur
+                    stats_pad[label] += segment_pad.dur
                 
             if not stats_only:
                 af_wrap.audio_file.export_all_birdnet(export_dir, af_wrap.segments, proc_logger=proc_logger, logger=logger, progress_bar=prog_bar, **kwargs)
         
-        calculate_and_save_stats(stats, export_dir)
+        calculate_and_save_stats(stats, stats_pad, export_dir)
         prog_bar.terminate()
 
     def filter_confidence(self, confidence_threshold: float):

@@ -217,7 +217,7 @@ class AudioFile:
 
         count = 0
 
-        with open(segment_list) as fp:
+        with open(segment_list, encoding='utf-8') as fp:
             csv_reader = csv.reader(fp)
             for row in csv_reader:
                 tstart_f = TimeUnit(row[1])
@@ -375,7 +375,7 @@ class AudioFile:
 
             seg = segments.pop(0) if segments else None
             
-            with open(listpath) as fp:
+            with open(listpath, encoding='utf-8') as fp:
                 csv_reader = csv.reader(fp)
 
                 for row in csv_reader:
