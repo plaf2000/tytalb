@@ -8,10 +8,12 @@ import fnmatch
 import re
 from parsers import get_parser
 from loggers import ProcLogger, Logger, ProgressBar 
-from variables import NOISE_LABEL, AUDIO_EXTENSION_PRIORITY
+from stats import calculate_and_save_stats
+from variables import NOISE_LABEL, AUDIO_EXTENSION_PRIORITY, BIRDNET_AUDIO_DURATION
 import pandas as pd
 import numpy as np
 import os
+from units import TimeUnit
 
 
 class LabelMapper:
@@ -112,7 +114,7 @@ class Annotations:
     def n_segments(self):
         return sum([len(af_wrap.segments) for af_wrap in self.audio_files.values()])
 
-    def extract_for_training(self, audio_files_dir: str, export_dir: str, logger: Logger, include_path=False, **kwargs):
+    def extract_for_training(self, audio_files_dir: str, export_dir: str, logger: Logger, include_path=False, stats_only=False, **kwargs):
         """
         Extract BIRDNET_AUDIO_DURATION-long chunks to train a custom classifier.
         """
@@ -162,11 +164,23 @@ class Annotations:
                     prog_bar.print(1)
             prog_bar.terminate()
 
-        prog_bar = ProgressBar("Exporting segments", self.n_segments)
+        prog_bar = ProgressBar("Generating statistics" if stats_only else "Exporting segments", self.n_segments)
         proc_logger = ProcLogger(**kwargs)
         logger.print("Found", len(self.audio_files), "audio files.")
+
+        stats = {} 
         for af_wrap in self.audio_files.values():
-            af_wrap.audio_file.export_all_birdnet(export_dir, af_wrap.segments, proc_logger=proc_logger, logger=logger, progress_bar=prog_bar, **kwargs)
+            for s in af_wrap.segments:
+                segment = s.birdnet_pad()
+                if (label := segment.label) not in stats.keys():           
+                    stats[label] = segment.dur
+                else:
+                    stats[label] += segment.dur
+                
+            if not stats_only:
+                af_wrap.audio_file.export_all_birdnet(export_dir, af_wrap.segments, proc_logger=proc_logger, logger=logger, progress_bar=prog_bar, **kwargs)
+        
+        calculate_and_save_stats(stats, export_dir)
         prog_bar.terminate()
 
     def filter_confidence(self, confidence_threshold: float):
@@ -192,6 +206,7 @@ def validate(
         to_validate: Annotations,
         binary=False,
         positive_labels: str=None,
+        overlapping_threshold_s: float = .5,
         late_start = False,
         early_stop = False 
         ):
@@ -213,6 +228,7 @@ def validate(
 
     all_rel_paths = set(ground_truth.audio_files.keys()) | set(to_validate.audio_files.keys())
     labels: set[str] = set()
+    overlapping_threshold = TimeUnit(overlapping_threshold_s)
 
     # Union the labels in ground truth and set to validate
     for bnt in [ground_truth, to_validate]:
@@ -265,9 +281,10 @@ def validate(
     def set_both(label_truth, label_prediction, duration):
         set_conf_time(label_truth, label_prediction, duration)
         # If there is some overlap, we add one to the count
-        conf_count_matrix[index[label_truth], index[label_prediction]] += 1
+        if duration >= overlapping_threshold:
+            conf_count_matrix[index[label_truth], index[label_prediction]] += 1
 
-               
+
     for rel_path in all_rel_paths:
         af_gt, af_tv = None, None
         # Get the audio file for the ground truth
@@ -304,7 +321,6 @@ def validate(
         segs_gt = interval_tree(af_gt)
         segs_tv = interval_tree(af_tv)
     
-
 
         for seg_gt in segs_gt:
             seg_gt = Segment.from_interval(seg_gt)
@@ -381,7 +397,6 @@ def validate(
         df_metrics =  pd.DataFrame(
             data,
         )
-
 
         return df_matrix, df_metrics
 
