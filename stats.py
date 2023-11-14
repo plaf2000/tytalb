@@ -7,7 +7,7 @@ def calculate_and_save_stats(data_dict, export_dir):
     counts = list(data_dict.values())
 
     total_occurrences = sum(counts)
-    label_distribution = {label: {'percentage': count/total_occurrences*100, 'count': count} for label, count in zip(labels, counts)}
+    label_distribution = {label: {'ratio': count/total_occurrences, 'count': count} for label, count in zip(labels, counts)}
     unique_labels = len(labels)
 
     mean_duration = np.mean(counts) 
@@ -18,7 +18,7 @@ def calculate_and_save_stats(data_dict, export_dir):
 
     stats_str = "Label Distribution:\n"
     for label, values in label_distribution.items():
-        stats_str += f"  {label}: {values['percentage']:.2f}% ({values['count']} seconds)\n"
+        stats_str += f"  {label}: {values['ratio']:.2%} ({values['count']} seconds)\n"
     stats_str += f"\nNumber of Unique Labels: {unique_labels}\n\n"
     stats_str += f"Duration Statistics:\n"
     stats_str += f"  Mean Duration: {mean_duration}\n"

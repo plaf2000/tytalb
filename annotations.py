@@ -171,11 +171,11 @@ class Annotations:
         stats = {} 
         for af_wrap in self.audio_files.values():
             for s in af_wrap.segments:
-                intervals = s.birdnet_pad()
-                if (label := intervals[2].decode()) not in stats.keys():           
-                    stats[label] = intervals[1] - intervals[0]
+                segment = s.birdnet_pad()
+                if (label := segment.label) not in stats.keys():           
+                    stats[label] = segment.dur
                 else:
-                    stats[label] += intervals[1] - intervals[0]
+                    stats[label] += segment.dur
                 
             if not stats_only:
                 af_wrap.audio_file.export_all_birdnet(export_dir, af_wrap.segments, proc_logger=proc_logger, logger=logger, progress_bar=prog_bar, **kwargs)
