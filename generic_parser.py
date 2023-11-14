@@ -80,7 +80,7 @@ class TableParser:
         Returns a generator that for each line of the table yields the segment.
         If the table has an header, it first sets the columns using the header.
         """
-        with open(table_path) as fp:
+        with open(table_path, encoding='utf-8') as fp:
             csvr = csv.reader(fp, delimiter=self.delimiter)
             if self.header:
                 theader = next(csvr)
@@ -107,7 +107,7 @@ class TableParser:
         while table_subpath.startswith(os.sep):
             table_subpath = table_subpath[1:]
         audio_rel_no_ext_paths = os.path.join(table_subpath, table_basename.split(".")[0])
-        with open(table_path) as fp:
+        with open(table_path, encoding='utf-8') as fp:
             csvr = csv.reader(fp, delimiter=self.delimiter)
             for _ in csvr:
                 yield audio_rel_no_ext_paths

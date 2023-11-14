@@ -31,6 +31,6 @@ def calculate_and_save_stats(data_dict, data_dict_pad, export_dir):
         stats_str += f"  Maximum Duration: {max_duration}\n\n"
 
         stats_file_path = os.path.join(export_dir, "stats.txt")
-        with open(stats_file_path, 'a') as stats_file:
+        with open(stats_file_path, 'a', encoding='utf-8') as stats_file:
             stats_file.write(stats_str)
         

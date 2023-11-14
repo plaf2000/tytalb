@@ -88,7 +88,7 @@ class RavenParser(TableParser):
 
     def get_segments(self, table_path: str, *args, **kwargs):
         seen_segments = set()
-        with open(table_path) as fp:
+        with open(table_path, encoding='utf-8') as fp:
             csvr = csv.reader(fp, delimiter=self.delimiter)
             if self.header:
                 theader = next(csvr)
@@ -123,7 +123,7 @@ class KaleidoscopeParser(TableParser):
         self.all_columns += self.audio_file_path
 
     def get_audio_rel_no_ext_paths(self, table_path: str, tables_base_path: str):
-        with open(table_path) as fp:
+        with open(table_path, encoding='utf-8') as fp:
             csvr = csv.reader(fp, delimiter=self.delimiter)
             if self.header:
                 theader = next(csvr)

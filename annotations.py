@@ -19,7 +19,7 @@ from units import TimeUnit
 class LabelMapper:
     def __init__(self, label_settings_path: str, *args, **kwargs):
         try:
-            with open(label_settings_path) as fp:
+            with open(label_settings_path, encoding='utf-8') as fp:
                 self.json_obj = json.load(fp)
         except:
             self.json_obj = {}

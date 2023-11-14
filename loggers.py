@@ -47,7 +47,7 @@ class Logger:
         self.log_date = log_date
         self.log = log
         if self.logfile_path is not None:
-            with open(self.logfile_path, "w") as fp:
+            with open(self.logfile_path, "w", encoding='utf-8') as fp:
                 fp.write("")
 
     def print(self, *args, **kwargs):
@@ -56,7 +56,7 @@ class Logger:
                 args = list(args)
                 args.insert(0, datetime.utcnow().isoformat()) 
             if self.logfile_path is not None:
-                with open(self.logfile_path, "a") as fp:
+                with open(self.logfile_path, "a", encoding='utf-8') as fp:
                     print(*args, **kwargs, file=fp)
                     return
             print(*args, *kwargs, file=self.logfile)
@@ -65,7 +65,7 @@ class Logger:
         if self.log:
             self.print("The following error occured:")
             if self.logfile_path is not None:
-                with open(self.logfile_path, "a") as fp:
+                with open(self.logfile_path, "a", encoding='utf-8') as fp:
                     traceback.print_exception(exception, file=fp)
                     return
             traceback.print_exception(exception, file=fp)
