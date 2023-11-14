@@ -6,6 +6,7 @@ def calculate_and_save_stats(data_dict, data_dict_pad, export_dir):
     
     for el, data in zip(["STATISTICS", "STATISTICS PADDED"], [data_dict, data_dict_pad]):
         stats_str = f"-----{el}-----\n\n"
+        data = dict(sorted(data.items(), key=lambda item: item[1], reverse=True))
         labels = list(data.keys())
         counts = list(data.values())
 
