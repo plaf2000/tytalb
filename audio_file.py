@@ -564,12 +564,3 @@ class AudioFile:
             "of noise exported,",f"{exported_noise_dur/self.duration:.1%}",
             "of the total duration"
         )
-
-        logger.print(
-            "\t",
-            noise_tot_dur,
-            labelled_tot_dur,
-            noise_ratio,
-            noise_export_ratio,
-            noise_export_prob,
-        )
