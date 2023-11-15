@@ -574,11 +574,3 @@ class AudioFile:
             "of the total duration"
         )
 
-        # logger.print(
-        #     "\t",
-        #     noise_tot_dur,
-        #     labelled_tot_dur,
-        #     noise_ratio,
-        #     noise_export_ratio,
-        #     noise_export_prob,
-        # )
