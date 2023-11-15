@@ -5,7 +5,7 @@ from math import ceil
 import os
 import tempfile
 import random
-
+import time
 import numpy as np 
 from segment import Segment
 from units import TimeUnit
@@ -29,6 +29,16 @@ dateel_lengths = {
     "%S": 2,
     "%f": 6,
 }
+
+# TODO: Figure out the cause of the problem for the permission error
+# ("The process cannot access the file because it is being used by another process")
+def permission_safe(action, args):
+    while True:
+        try:
+            action(*args)
+            break
+        except PermissionError:
+            time.sleep(.1)
 
 
 class AudioFile:
@@ -240,27 +250,27 @@ class AudioFile:
                         if not os.path.isfile(out_path) and (delete_prob is not None and random.random() >= delete_prob):
                             self.export_segment_ffmpeg(unsegmented_fpath, out_path, ss = tstart_f, to=tend_f)
                             count += 1
-                    os.remove(fpath)
+                    permission_safe(os.remove, [fpath])
                     continue
 
                 seg = Segment(tstart_abs, tend_abs, label)
                 out_path = self.segment_path(base_path, seg, ext)
                 if os.path.isfile(out_path) or (delete_prob is not None and random.random() < delete_prob):
-                    os.remove(fpath)
+                    permission_safe(os.remove, [fpath])
                     continue
 
                 count += 1
 
                 if "wav" == ext.lower():
-                    os.replace(fpath, out_path)
+                    permission_safe(os.replace, [fpath, out_path])
                     continue
 
                 # If the output audio is not wav, a re-encode is needed.
 
                 self.export_segment_ffmpeg(fpath, out_path)
-                os.remove(fpath)
+                permission_safe(os.remove, [fpath])
                     
-        os.remove(segment_list)
+        permission_safe(os.remove, [segment_list])
         return count
 
     
@@ -309,7 +319,6 @@ class AudioFile:
         annotation_end = self.duration if not early_stop else max([s.tend for s in segments])
         duration = annotation_end - annotation_start
         overlap = TimeUnit(overlap_s)
-        max_tend = 0
         n_segments_original = len(segments)
         segments = [seg for seg in segments if seg.label != NOISE_LABEL]
         n_segments = len(segments)
@@ -337,8 +346,6 @@ class AudioFile:
         noise_ratio = noise_tot_dur / self.duration
         noise_export_ratio = max(min(1, noise_export_ratio), 0)
         noise_export_prob = min(1, noise_ratio and noise_export_ratio / noise_ratio or 0)
-
-
 
 
         # Timestamps where the insterval changes from being 
@@ -521,19 +528,21 @@ class AudioFile:
                             **kwargs
                         )
 
+
                         seg_noise = Segment(tstart_f, tend_f, NOISE_LABEL)
                         if proc_logger.log_process(
                             proc,
                             f"{BIRDNET_AUDIO_DURATION.s}s-segment from {seg_noise} in file {self.path} exported to: {out_path}",
                             f"Error while exporting {seg_noise} into segments:"
                         ):
+                            
                             noise_chunks += self.rename_or_delete_segments(
                                 base_path,
                                 NOISE_LABEL,
                                 fpath,
                                 temp_seglist,
                                 tstart_f,
-                                delete_prob = (None if not noise_export_prob else 1 - noise_export_prob)
+                                delete_prob = (None if not noise_export_prob else 1 - noise_export_prob),
                             )
 
         logger.print(f"{self.path}:")    
@@ -564,3 +573,4 @@ class AudioFile:
             "of noise exported,",f"{exported_noise_dur/self.duration:.1%}",
             "of the total duration"
         )
+
