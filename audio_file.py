@@ -206,7 +206,6 @@ class AudioFile:
             segment_list: str = None,
             tstart: TimeUnit = None,
             delete_prob: float | None = None,
-            i = None,
             **kwargs,
         ):
         """
@@ -313,7 +312,6 @@ class AudioFile:
         birdnet_instance.export_all_birdnet("./your/output/directory", segments, audio_format="wav", overlap_s=1)
         ```    
         """
-        i=0
         random.seed(self.basename)
         length_threshold = TimeUnit(length_threshold_s)
         segments = sorted([s.birdnet_pad() for s in segments], key=lambda seg: seg.tstart)
@@ -321,7 +319,6 @@ class AudioFile:
         annotation_end = self.duration if not early_stop else max([s.tend for s in segments])
         duration = annotation_end - annotation_start
         overlap = TimeUnit(overlap_s)
-        max_tend = 0
         n_segments_original = len(segments)
         segments = [seg for seg in segments if seg.label != NOISE_LABEL]
         n_segments = len(segments)
@@ -349,8 +346,6 @@ class AudioFile:
         noise_ratio = noise_tot_dur / self.duration
         noise_export_ratio = max(min(1, noise_export_ratio), 0)
         noise_export_prob = min(1, noise_ratio and noise_export_ratio / noise_ratio or 0)
-
-
 
 
         # Timestamps where the insterval changes from being 
@@ -548,9 +543,7 @@ class AudioFile:
                                 temp_seglist,
                                 tstart_f,
                                 delete_prob = (None if not noise_export_prob else 1 - noise_export_prob),
-                                i=i
                             )
-                    i+=1
 
         logger.print(f"{self.path}:")    
         logger.print(
@@ -581,11 +574,11 @@ class AudioFile:
             "of the total duration"
         )
 
-        logger.print(
-            "\t",
-            noise_tot_dur,
-            labelled_tot_dur,
-            noise_ratio,
-            noise_export_ratio,
-            noise_export_prob,
-        )
+        # logger.print(
+        #     "\t",
+        #     noise_tot_dur,
+        #     labelled_tot_dur,
+        #     noise_ratio,
+        #     noise_export_ratio,
+        #     noise_export_prob,
+        # )
