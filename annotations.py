@@ -183,7 +183,7 @@ class Annotations:
                 
             if not stats_only:
                 af_wrap.audio_file.export_all_birdnet(export_dir, af_wrap.segments, proc_logger=proc_logger, logger=logger, progress_bar=prog_bar, **kwargs)
-        
+            prog_bar.print(1)
         calculate_and_save_stats(stats, stats_pad, export_dir)
         prog_bar.terminate()
 
