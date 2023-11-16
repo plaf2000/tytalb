@@ -99,6 +99,7 @@ class Annotations:
                         unique=False
                         break
                 self.audio_files.setdefault(rel_path, SegmentsWrapper(unique)).segments.append(segment)
+                prog_bar.print(1)
                 
         for v in self.audio_files.values():
             v.segments = sorted(v.segments, key=lambda seg: seg.tstart)
@@ -122,37 +123,37 @@ class Annotations:
         logger.print("Input audio folder:", audio_files_dir)
         logger.print("Output audio folder:", export_dir)
 
+        if not stats_only:
+            prog_bar = ProgressBar("Retrieving audio paths", self.n_segments)
+            for rel_path, af_wrap in self.audio_files.items():
+                rel_parent = os.path.dirname(rel_path)
+                parent = os.path.join(audio_files_dir, rel_parent)
+                audiodir_files = [os.path.join(rel_parent, os.path.basename(f)) for f in os.listdir(parent) if os.path.isfile(os.path.join(parent, f))
+                                and f.split(".")[-1].lower() in AUDIO_EXTENSION_PRIORITY]
+                # Get all files starting with this filename
+                audio_candidates = fnmatch.filter(audiodir_files, f"{rel_path}.*")
 
-        prog_bar = ProgressBar("Retrieving audio paths", self.n_segments)
-        for rel_path, af_wrap in self.audio_files.items():
-            rel_parent = os.path.dirname(rel_path)
-            parent = os.path.join(audio_files_dir, rel_parent)
-            audiodir_files = [os.path.join(rel_parent, os.path.basename(f)) for f in os.listdir(parent) if os.path.isfile(os.path.join(parent, f))
-                              and f.split(".")[-1].lower() in AUDIO_EXTENSION_PRIORITY]
-            # Get all files starting with this filename
-            audio_candidates = fnmatch.filter(audiodir_files, f"{rel_path}.*")
+                if not audio_candidates:
+                    raise Exception(f"No audio files found starting with relative path "\
+                                    f"{rel_path} and extension {'|'.join(AUDIO_EXTENSION_PRIORITY)} "\
+                                    f"inside {audio_files_dir}.")
+                # Give the priority based on `AUDIO_EXTENSION_PRIORITY`
+                priority = lambda fname: AUDIO_EXTENSION_PRIORITY.index(fname.split(".")[-1].lower())
+                chosen_audio_rel_path = min(audio_candidates, key = priority)
 
-            if not audio_candidates:
-                raise Exception(f"No audio files found starting with relative path "\
-                                f"{rel_path} and extension {'|'.join(AUDIO_EXTENSION_PRIORITY)} "\
-                                f"inside {audio_files_dir}.")
-            # Give the priority based on `AUDIO_EXTENSION_PRIORITY`
-            priority = lambda fname: AUDIO_EXTENSION_PRIORITY.index(fname.split(".")[-1].lower())
-            chosen_audio_rel_path = min(audio_candidates, key = priority)
-
-            audio_path = os.path.join(audio_files_dir, chosen_audio_rel_path)
-            af = AudioFile(audio_path)
-            af.set_date(**kwargs)
-            if include_path or not af_wrap.unique:
-                # If the filename is not unique (or the user decides to) include  
-                # the relative path in the output filename.
-                path = os.path.normpath(os.path.dirname(chosen_audio_rel_path))
-                splits = path.split(os.sep)
-                if path!=".":
-                    af.prefix = f"{'_'.join(splits)}_{af.prefix}"           
-            af_wrap.audio_file = af
-            prog_bar.print(1)
-        prog_bar.terminate()
+                audio_path = os.path.join(audio_files_dir, chosen_audio_rel_path)
+                af = AudioFile(audio_path)
+                af.set_date(**kwargs)
+                if include_path or not af_wrap.unique:
+                    # If the filename is not unique (or the user decides to) include  
+                    # the relative path in the output filename.
+                    path = os.path.normpath(os.path.dirname(chosen_audio_rel_path))
+                    splits = path.split(os.sep)
+                    if path!=".":
+                        af.prefix = f"{'_'.join(splits)}_{af.prefix}"           
+                af_wrap.audio_file = af
+                prog_bar.print(1)
+            prog_bar.terminate()
 
 
         if "label_settings_path" in kwargs and os.path.isfile(kwargs["label_settings_path"]):
