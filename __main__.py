@@ -259,6 +259,14 @@ if __name__ == "__main__":
                                       "(default = 0.5).",
                                  type=float,
                                  default=.5)
+    
+    validate_parser.add_argument("-smgt", "--skip-missing-gt",
+                                 dest="skip_missing_gt",
+                                 help="Whether to skip the missing ground-truth file or consider them as noise."\
+                                      "(default = True).",
+                                type=bool,
+                                action=BooleanOptionalAction,
+                                default=True)
 
     
     args, custom_args = arg_parser.parse_known_args()
@@ -357,7 +365,8 @@ if __name__ == "__main__":
                     positive_labels = positive_labels,
                     late_start = args.late_start,
                     early_stop = args.early_stop,
-                    overlapping_threshold_s = args.overlapping_threshold_s
+                    overlapping_threshold_s = args.overlapping_threshold_s,
+                    skip_missing_gt=args.skip_missing_gt
                 )
 
                 for s in [stime, scount]:
@@ -378,7 +387,8 @@ if __name__ == "__main__":
                 positive_labels = positive_labels,
                 late_start = args.late_start,
                 early_stop = args.early_stop,
-                overlapping_threshold_s = args.overlapping_threshold_s
+                overlapping_threshold_s = args.overlapping_threshold_s,
+                skip_missing_gt=args.skip_missing_gt
             )
 
         def save_stats(stats: tuple[pd.DataFrame, pd.DataFrame], suffix: str):

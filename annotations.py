@@ -55,7 +55,6 @@ class Annotations:
             self,
             tables_dir: str,
             table_format: str,
-            logger: Logger,
             recursive_subfolders = True,
             **parser_kwargs
         ):
@@ -79,13 +78,18 @@ class Annotations:
         if len(self.tables_paths) == 0:
             raise AttributeError("No annotations found in the provided folder.")
 
+    def load(self, logger: Logger = None, list_rel_paths: list[str] = None, **kwargs):
+
         self.audio_files: dict[str, SegmentsWrapper] = dict()
         prog_bar = ProgressBar("Reading tables", len(self.tables_paths))
+
         for table_path in self.tables_paths:
             for rel_path, segment in zip(self.parser.get_audio_rel_no_ext_paths(table_path, self.tables_dir), 
                                          self.parser.get_segments(table_path)):
+                if list_rel_paths is not None and rel_path not in list_rel_paths:
+                    prog_bar.print(1)
+                    continue
                 basename = os.path.basename(rel_path)
-                unique = True
                 if rel_path in self.audio_files.keys():
                     self.audio_files[rel_path].segments.append(segment)
                     continue
@@ -122,6 +126,8 @@ class Annotations:
         logger.print("Input annotations' folder:", self.tables_dir)
         logger.print("Input audio folder:", audio_files_dir)
         logger.print("Output audio folder:", export_dir)
+
+        self.load(logger, **kwargs)
 
         if not stats_only:
             prog_bar = ProgressBar("Retrieving audio paths", self.n_segments)
@@ -212,7 +218,8 @@ def validate(
         positive_labels: str=None,
         overlapping_threshold_s: float = .5,
         late_start = False,
-        early_stop = False 
+        early_stop = False,
+        skip_missing_gt = True,
         ):
     """
     Compare the annotations to validate to the ground truth ones.
@@ -230,9 +237,19 @@ def validate(
        in the matrix.
     """
 
+    ground_truth.load()
+
+    # Only load the tables that we want to validate (saves time)
+    if skip_missing_gt:
+        gt_paths = ground_truth.audio_files.keys()
+        to_validate.load(list_rel_paths=gt_paths)
+
     all_rel_paths = set(ground_truth.audio_files.keys()) | set(to_validate.audio_files.keys())
     labels: set[str] = set()
     overlapping_threshold = TimeUnit(overlapping_threshold_s)
+
+
+
 
     # Union the labels in ground truth and set to validate
     for bnt in [ground_truth, to_validate]:
@@ -300,10 +317,12 @@ def validate(
             af_tv = to_validate.audio_files[rel_path]
 
         # If there are no labels in the ground truth, there are only FP
+        # Unless skip_missing_gt is True
         if not rel_path in ground_truth.audio_files:
-            for seg in af_tv.segments:
-                if seg.label != NOISE_LABEL:
-                    set_both(NOISE_LABEL, seg.label, seg.dur)
+            if not skip_missing_gt:
+                for seg in af_tv.segments:
+                    if seg.label != NOISE_LABEL:
+                        set_both(NOISE_LABEL, seg.label, seg.dur)
             continue
         
         # If there are no labels in the validation, there are only FN
