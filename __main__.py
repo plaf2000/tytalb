@@ -13,7 +13,11 @@ import os
 
 
 
-
+def default_label_settings(label_settings_path, tables_dir):
+    if label_settings_path is None:
+        label_settings_path = os.path.join(tables_dir, "labels.json")
+    return label_settings_path
+    
 
 
 
@@ -202,6 +206,14 @@ if __name__ == "__main__":
                                 type=bool,
                                 action=BooleanOptionalAction,
                                 default=True)
+    
+    validate_parser.add_argument("-ltv", "--label-settings-gt",
+                                dest="gt_label_settings_path",
+                                help="Path to the file used to map and filter labels of the ground truth annotations."\
+                                     "Please refer to `README.md`. By default the file is `labels.json` in the root"\
+                                     " directory of annotations.",
+                                type=str,
+                                default=None)
 
     validate_parser.add_argument("-ls", "--late-start",
                                 dest="late_start",
@@ -214,7 +226,7 @@ if __name__ == "__main__":
     validate_parser.add_argument("-es", "--early-stop",
                                 dest="early_stop",
                                 help='Whether to not consider the interval between the last annotation '\
-                                        'and the end of the recording (default = False)',
+                                     'and the end of the recording (default = False)',
                                 type=bool,
                                 action=BooleanOptionalAction,
                                 default=False)
@@ -287,9 +299,9 @@ if __name__ == "__main__":
         logger.print("Started processing...")
         ts = time.time()
 
-        label_settings_path = args.label_settings_path
-        if label_settings_path is None:
-            label_settings_path = os.path.join(args.tables_dir, "labels.json")
+
+
+        label_settings_path = default_label_settings(args.label_settings_path, args.tables_dir)
 
         parser_kwargs = {}
         if args.header is not None:
@@ -352,6 +364,9 @@ if __name__ == "__main__":
         if args.positive_labels is not None:
             positive_labels = args.positive_labels.split(",")
 
+        gt_label_settings_path = default_label_settings(args.gt_label_settings_path, args.tables_dir_gt)
+        
+
         if args.confidence_thresholds is not None:
             thresholds = np.linspace(args.confidence_thresholds_start, args.confidence_thresholds_end, args.confidence_thresholds)
             stats_time: list[pd.DataFrame, pd.DataFrame] = [pd.DataFrame(), pd.DataFrame()]
@@ -360,18 +375,20 @@ if __name__ == "__main__":
                 t = round(t, 4)
                 stime, scount = validate(
                     ground_truth = bnt_gt,
-                    to_validate = bnt_tv.filter_confidence(t),
+                    to_validate = bnt_tv,
+                    filter_confidence = t,
                     binary = args.binary,
                     positive_labels = positive_labels,
                     late_start = args.late_start,
                     early_stop = args.early_stop,
                     overlapping_threshold_s = args.overlapping_threshold_s,
-                    skip_missing_gt=args.skip_missing_gt
+                    skip_missing_gt=args.skip_missing_gt,
+                    gt_label_settings_path = gt_label_settings_path
                 )
 
                 for s in [stime, scount]:
                     for df in s:
-                        df["Confience threshold"] = t
+                        df["Confidence threshold"] = t
                         
                 for i, df in enumerate(stime):
                     stats_time[i] = pd.concat([stats_time[i], df])
@@ -388,7 +405,8 @@ if __name__ == "__main__":
                 late_start = args.late_start,
                 early_stop = args.early_stop,
                 overlapping_threshold_s = args.overlapping_threshold_s,
-                skip_missing_gt=args.skip_missing_gt
+                skip_missing_gt=args.skip_missing_gt,
+                gt_label_settings_path = gt_label_settings_path
             )
 
         def save_stats(stats: tuple[pd.DataFrame, pd.DataFrame], suffix: str):

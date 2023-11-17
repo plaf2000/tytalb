@@ -63,6 +63,7 @@ class Annotations:
         self.tables_dir = tables_dir
         self.recursive_subfolders = recursive_subfolders
         self.tables_paths: list = []
+        self.audio_files: None | dict[str, SegmentsWrapper] = None
 
         if recursive_subfolders:
             for dirpath, dirs, files in os.walk(self.tables_dir):
@@ -78,17 +79,20 @@ class Annotations:
         if len(self.tables_paths) == 0:
             raise AttributeError("No annotations found in the provided folder.")
 
-    def load(self, logger: Logger = None, list_rel_paths: list[str] = None, **kwargs):
+    def load(self, logger: Logger = Logger(log=False), list_rel_paths: list[str] = None, **kwargs):
 
         self.audio_files: dict[str, SegmentsWrapper] = dict()
         prog_bar = ProgressBar("Reading tables", len(self.tables_paths))
 
         for table_path in self.tables_paths:
+            if self.parser.table_per_file\
+               and list_rel_paths is not None\
+               and self.parser.get_audio_rel_no_ext_path(table_path, self.tables_dir) not in list_rel_paths:
+                continue
             for rel_path, segment in zip(self.parser.get_audio_rel_no_ext_paths(table_path, self.tables_dir), 
                                          self.parser.get_segments(table_path)):
                 if list_rel_paths is not None and rel_path not in list_rel_paths:
-                    prog_bar.print(1)
-                    continue
+                    break
                 basename = os.path.basename(rel_path)
                 if rel_path in self.audio_files.keys():
                     self.audio_files[rel_path].segments.append(segment)
@@ -103,13 +107,21 @@ class Annotations:
                         unique=False
                         break
                 self.audio_files.setdefault(rel_path, SegmentsWrapper(unique)).segments.append(segment)
-                prog_bar.print(1)
+            prog_bar.print(1)
                 
         for v in self.audio_files.values():
             v.segments = sorted(v.segments, key=lambda seg: seg.tstart)
         prog_bar.terminate()
 
-
+    def map_labels(self, label_settings_path=None, **kwargs):
+        if label_settings_path is not None and os.path.isfile(label_settings_path):
+            prog_bar = ProgressBar("Changing labels", self.n_segments)
+            label_mapper = LabelMapper(label_settings_path)
+            for af_wrap in self.audio_files.values():
+                for seg in af_wrap.segments:
+                    seg.label = label_mapper.map(seg.label)
+                    prog_bar.print(1)
+            prog_bar.terminate()
 
     @property
     def n_tables(self):
@@ -128,6 +140,7 @@ class Annotations:
         logger.print("Output audio folder:", export_dir)
 
         self.load(logger, **kwargs)
+        self.map_labels(**kwargs)
 
         if not stats_only:
             prog_bar = ProgressBar("Retrieving audio paths", self.n_segments)
@@ -162,15 +175,6 @@ class Annotations:
             prog_bar.terminate()
 
 
-        if "label_settings_path" in kwargs and os.path.isfile(kwargs["label_settings_path"]):
-            prog_bar = ProgressBar("Changing labels", self.n_segments)
-            label_mapper = LabelMapper(**kwargs)
-            for af_wrap in self.audio_files.values():
-                for seg in af_wrap.segments:
-                    seg.label = label_mapper.map(seg.label)
-                    prog_bar.print(1)
-            prog_bar.terminate()
-
         prog_bar = ProgressBar("Generating statistics" if stats_only else "Exporting segments", self.n_segments)
         proc_logger = ProcLogger(**kwargs)
         logger.print("Found", len(self.audio_files), "audio files.")
@@ -198,7 +202,10 @@ class Annotations:
         Returns an `Annotation` deepcopy object where all segments below the
         confidence threshold are removed.
         """
+
         copy = deepcopy(self)
+        if self.audio_files is None:
+            self.load()
         for rel_path in copy.audio_files.keys():
             segs = copy.audio_files[rel_path].segments
             copy.audio_files[rel_path].segments = [s for s in segs if s.confidence >= confidence_threshold]
@@ -214,12 +221,14 @@ class Annotations:
 def validate(
         ground_truth: Annotations,
         to_validate: Annotations,
+        filter_confidence: float = None,
         binary=False,
         positive_labels: str=None,
         overlapping_threshold_s: float = .5,
         late_start = False,
         early_stop = False,
         skip_missing_gt = True,
+        **kwargs
         ):
     """
     Compare the annotations to validate to the ground truth ones.
@@ -238,15 +247,23 @@ def validate(
     """
 
     ground_truth.load()
+    if "gt_label_settings_path" in kwargs:
+        ground_truth.map_labels(kwargs["gt_label_settings_path"])
+
 
     # Only load the tables that we want to validate (saves time)
     if skip_missing_gt:
         gt_paths = ground_truth.audio_files.keys()
         to_validate.load(list_rel_paths=gt_paths)
+        if filter_confidence is not None:
+            to_validate = to_validate.filter_confidence(filter_confidence)
+
+
 
     all_rel_paths = set(ground_truth.audio_files.keys()) | set(to_validate.audio_files.keys())
     labels: set[str] = set()
     overlapping_threshold = TimeUnit(overlapping_threshold_s)
+
 
 
 
@@ -319,10 +336,9 @@ def validate(
         # If there are no labels in the ground truth, there are only FP
         # Unless skip_missing_gt is True
         if not rel_path in ground_truth.audio_files:
-            if not skip_missing_gt:
-                for seg in af_tv.segments:
-                    if seg.label != NOISE_LABEL:
-                        set_both(NOISE_LABEL, seg.label, seg.dur)
+            for seg in af_tv.segments:
+                if seg.label != NOISE_LABEL:
+                    set_both(NOISE_LABEL, seg.label, seg.dur)
             continue
         
         # If there are no labels in the validation, there are only FN
@@ -424,3 +440,11 @@ def validate(
         return df_matrix, df_metrics
 
     return  stats(conf_time_matrix), stats(conf_count_matrix)
+
+def plot_stats(stats, fout):
+    conf, metrics = stats
+
+
+def plot_both_stats(statss, fouts):
+    for stats, fout in zip(statss, fouts):
+        plot_stats(stats, fout)
