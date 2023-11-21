@@ -92,13 +92,12 @@ class TableParser:
     def get_audio_rel_no_ext_path(self, table_path: str, tables_base_path: str):
         table_basename = os.path.basename(table_path)
         table_subpath = os.path.dirname(table_path)
-        if table_subpath.startswith(tables_base_path):
-            table_subpath = table_subpath[len(tables_base_path):]
+        table_subpath = table_subpath[len(tables_base_path):]
         
         while table_subpath.startswith(os.sep):
             table_subpath = table_subpath[1:]
         audio_rel_no_ext_paths = os.path.join(table_subpath, table_basename.split(".")[0])
-        
+
         return audio_rel_no_ext_paths
 
     def get_audio_rel_no_ext_paths(self, table_path: str, tables_base_path: str):

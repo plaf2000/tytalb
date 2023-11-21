@@ -60,7 +60,7 @@ class Annotations:
         ):
 
         self.parser = get_parser(table_format, **parser_kwargs)
-        self.tables_dir = tables_dir
+        self.tables_dir = os.path.normpath(tables_dir)
         self.recursive_subfolders = recursive_subfolders
         self.tables_paths: list = []
         self.audio_files: None | dict[str, SegmentsWrapper] = None
@@ -122,6 +122,34 @@ class Annotations:
                     seg.label = label_mapper.map(seg.label)
                     prog_bar.print(1)
             prog_bar.terminate()
+    
+    def load_audio_paths(self, audio_files_dir: str, **kwargs):
+        prog_bar = ProgressBar("Retrieving audio paths", self.n_segments)
+        for rel_path, af_wrap in self.audio_files.items():
+            rel_parent = os.path.dirname(rel_path)
+            parent = os.path.join(audio_files_dir, rel_parent)
+            audiodir_files = [os.path.join(rel_parent, os.path.basename(f)) for f in os.listdir(parent) if os.path.isfile(os.path.join(parent, f))
+                            and f.split(".")[-1].lower() in AUDIO_EXTENSION_PRIORITY]
+            # Get all files starting with this filename
+            audio_candidates = fnmatch.filter(audiodir_files, f"{rel_path}.*")
+
+            if not audio_candidates:
+                raise Exception(f"No audio files found starting with relative path "\
+                                f"{rel_path} and extension {'|'.join(AUDIO_EXTENSION_PRIORITY)} "\
+                                f"inside {audio_files_dir}.")
+            # Give the priority based on `AUDIO_EXTENSION_PRIORITY`
+            priority = lambda fname: AUDIO_EXTENSION_PRIORITY.index(fname.split(".")[-1].lower())
+            chosen_audio_rel_path = min(audio_candidates, key = priority)
+
+            audio_path = os.path.join(audio_files_dir, chosen_audio_rel_path)
+            af = AudioFile(audio_path)
+            af.rel_path = chosen_audio_rel_path
+            af.set_date(**kwargs)
+       
+            af_wrap.audio_file = af
+            prog_bar.print(1)
+        prog_bar.terminate()
+        
 
     @property
     def n_tables(self):
@@ -143,37 +171,7 @@ class Annotations:
         self.map_labels(**kwargs)
 
         if not stats_only:
-            prog_bar = ProgressBar("Retrieving audio paths", self.n_segments)
-            for rel_path, af_wrap in self.audio_files.items():
-                rel_parent = os.path.dirname(rel_path)
-                parent = os.path.join(audio_files_dir, rel_parent)
-                audiodir_files = [os.path.join(rel_parent, os.path.basename(f)) for f in os.listdir(parent) if os.path.isfile(os.path.join(parent, f))
-                                and f.split(".")[-1].lower() in AUDIO_EXTENSION_PRIORITY]
-                # Get all files starting with this filename
-                audio_candidates = fnmatch.filter(audiodir_files, f"{rel_path}.*")
-
-                if not audio_candidates:
-                    raise Exception(f"No audio files found starting with relative path "\
-                                    f"{rel_path} and extension {'|'.join(AUDIO_EXTENSION_PRIORITY)} "\
-                                    f"inside {audio_files_dir}.")
-                # Give the priority based on `AUDIO_EXTENSION_PRIORITY`
-                priority = lambda fname: AUDIO_EXTENSION_PRIORITY.index(fname.split(".")[-1].lower())
-                chosen_audio_rel_path = min(audio_candidates, key = priority)
-
-                audio_path = os.path.join(audio_files_dir, chosen_audio_rel_path)
-                af = AudioFile(audio_path)
-                af.set_date(**kwargs)
-                if include_path or not af_wrap.unique:
-                    # If the filename is not unique (or the user decides to) include  
-                    # the relative path in the output filename.
-                    path = os.path.normpath(os.path.dirname(chosen_audio_rel_path))
-                    splits = path.split(os.sep)
-                    if path!=".":
-                        af.prefix = f"{'_'.join(splits)}_{af.prefix}"           
-                af_wrap.audio_file = af
-                prog_bar.print(1)
-            prog_bar.terminate()
-
+            self.load_audio_paths(audio_files_dir, **kwargs)
 
         prog_bar = ProgressBar("Generating statistics" if stats_only else "Exporting segments", self.n_segments)
         proc_logger = ProcLogger(**kwargs)
@@ -182,6 +180,14 @@ class Annotations:
         stats_pad = {}
         stats = {} 
         for af_wrap in self.audio_files.values():
+            if include_path or not af_wrap.unique:
+                # If the filename is not unique (or the user decides to) include  
+                # the relative path in the output filename.
+                af = af_wrap.audio_file
+                path = os.path.normpath(os.path.dirname(af.rel_path))
+                splits = path.split(os.sep)
+                if path!=".":
+                    af.prefix = f"{'_'.join(splits)}_{af.prefix}"    
             for segment in af_wrap.segments:
                 segment_pad = segment.birdnet_pad()
                 if (label := segment.label) not in stats.keys():           
@@ -193,7 +199,6 @@ class Annotations:
                 
             if not stats_only:
                 af_wrap.audio_file.export_all_birdnet(export_dir, af_wrap.segments, proc_logger=proc_logger, logger=logger, progress_bar=prog_bar, **kwargs)
-            prog_bar.print(1)
         calculate_and_save_stats(stats, stats_pad, export_dir)
         prog_bar.terminate()
 
@@ -441,8 +446,10 @@ def validate(
 
     return  stats(conf_time_matrix), stats(conf_count_matrix)
 
-def plot_stats(stats, fout):
+def plot_stats(stats: tuple[pd.DataFrame, pd.DataFrame], fout: str):
     conf, metrics = stats
+    labels = conf.columns.drop(["Confidence"])
+    print(labels)
 
 
 def plot_both_stats(statss, fouts):

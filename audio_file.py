@@ -51,6 +51,7 @@ class AudioFile:
         self.ext = self.splits[-1].lower()
         self.duration = TimeUnit(sf.info(self.path).duration)
         self.date_time = None
+        self.rel_path = None
     
     def set_date(self, date_format:str = "%Y%m%d_%H%M%S", **kwargs):
         """
