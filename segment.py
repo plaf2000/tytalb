@@ -46,7 +46,7 @@ class Segment(it.Interval):
     
     def safe_centered_pad(self, pad: TimeUnit):
         if self.tstart-pad < 0:
-            return Segment(0, self.tend + pad + (pad - self.tstart))
+            return Segment(0, self.tend + pad + (pad - self.tstart), self.label)
         return self.centered_pad(pad)
 
     def centered_pad_to(self, duration: TimeUnit):
