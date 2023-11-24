@@ -3,10 +3,9 @@ import numpy as np
 from birdnetlib import analyzer, Recording
 import operator
 from scipy import signal,ndimage
+from annotations import Annotations
 
-an = analyzer.Analyzer(classifier_model_path=r"C:\Users\plaf\Music\ALAN_training\tytalb_hissing_cclassifier.tflite",
-                       classifier_labels_path=r"C:\Users\plaf\Music\ALAN_training\tytalb_hissing_cclassifier_Labels.txt")
-af_path = r"c:\Users\plaf\Music\ALAN_training\audiofiles\87_MuristHautDing_20230627_220000.WAV"
+
 # rec = Recording(an, af_path)
 dur = 60
 dur_birdnet = 3
@@ -14,6 +13,19 @@ subseg_dur = .75
 margin = .2
 min_dur = .5
 tstart = 300
+
+an = analyzer.Analyzer(classifier_model_path=r"C:\Users\plaf\Music\ALAN_training\tytalb_hissing_cclassifier.tflite",
+                       classifier_labels_path=r"C:\Users\plaf\Music\ALAN_training\tytalb_hissing_cclassifier_Labels.txt")
+af_path = r"c:\Users\plaf\Music\ALAN_training\audiofiles\87_MuristHautDing_20230627_220000.WAV"
+
+annotations = Annotations("C:\\Users\\plaf\\Music\\ALAN_training\\analysis\\hissing_only\\87_Murist Haut Ding\\87_MuristHD_Recorder", "raven")
+annotations.load_audio_paths("c:\\Users\\plaf\\Music\\ALAN_training\\audiofiles")
+
+
+annotations.load()
+
+
+
 
 y, sr = librosa.load(af_path, sr=48000, mono=True, res_type="kaiser_fast", offset = tstart, duration=dur)
 sample_subseg_dur = int(subseg_dur * sr)
@@ -134,6 +146,5 @@ for ss, se in zip(subseg_starts, subseg_ends):
     conf_thresh = .9
     p_sorted = [i for i in p_sorted if i[1] >= conf_thresh]
     if p_sorted:
-        print("Taken", dur)
         valid_starts.append(ss)
         valid_ends.append(se)
