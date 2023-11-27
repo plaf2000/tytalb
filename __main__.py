@@ -136,13 +136,19 @@ if __name__ == "__main__":
                                 type=bool,
                                 action=BooleanOptionalAction,
                                 default=False)
-    
+
     extract_parser.add_argument("-nr", "--noise-ratio",
                                 dest="noise_export_ratio",
                                 help="Ratio between 0 and 1 (in terms of track's length) of noise to export (default = 0.1).",
                                 type=float,
                                 default=.1)
-    
+
+    extract_parser.add_argument("-oth", "--occurrence_threshold",
+                                dest="occurrence_threshold",
+                                help='The threshold of audio file occurrences from which the labels will be taken into account',
+                                type=int,
+                                default=0)
+
     # extract_parser.add_argument("-d", "--debug",
     #                             dest="debug",
     #                             help='Whether to log debug informations too.',
@@ -312,6 +318,7 @@ if __name__ == "__main__":
                 include_path = args.include_path,
                 stats_only = args.stats_only,
                 noise_export_ratio = args.noise_export_ratio,
+                occurrence_threshold = args.occurrence_threshold,
             )
         
             logger.print(f"... end of processing (elapsed {time.time()-ts:.1f}s)")
