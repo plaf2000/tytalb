@@ -67,12 +67,12 @@ class TableParser:
             for col in self.all_columns:
                 col.set_coli(*args, **kwargs)
 
-    def get_segment(self, row: list) -> Segment:
+    def get_segment(self, row: list, line_number: int) -> Segment:
         """
         Instantiate the `Segment` object by reading the row values.
         """
         return self.segment_type(
-            *[col.get_val(row) for col in self.columns]
+            *[col.get_val(row) for col in self.columns], line_number
         )
 
     def get_segments(self, table_path: str, *args, **kwargs) -> Generator[Segment, None, None]:
@@ -82,11 +82,14 @@ class TableParser:
         """
         with open(table_path, encoding='utf-8') as fp:
             csvr = csv.reader(fp, delimiter=self.delimiter)
+            line_number = 0
             if self.header:
                 theader = next(csvr)
                 self.set_coli(theader)
+                line_number += 1
             for row in csvr:
-                yield self.get_segment(row)
+                line_number += 1
+                yield self.get_segment(row, line_number)
 
     def get_audio_rel_no_ext_paths(self, table_path: str, tables_base_path: str):
         """
