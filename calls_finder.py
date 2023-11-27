@@ -27,19 +27,19 @@ for af_wrap in annotations.audio_files.values():
     af = af_wrap.audio_file
     # Little trick to make the segments actually overlap:
     segments = [Segment(max(0, s.tstart - .1), s.tend, s.label) for s in af_wrap.segments]
-    segments: IntervalTree | list[Segment] = Segment.get_intervaltree(segments)
+    segments: IntervalTree = Segment.get_intervaltree(segments)
     segments.merge_overlaps()
 
     valid_starts = []
     valid_ends = []
 
     segments = sorted(segments, key = lambda s: s.begin)
-    timestamps  = []
+    calls  = []
 
 
     for seg in segments:
         if not isinstance(seg, Segment):
-            seg = Segment(tstart_s=seg.begin, tend_s=seg.end)
+            seg = Segment(tstart_s=seg.begin, tend_s=seg.end, label=seg.data)
 
         
 
@@ -61,13 +61,17 @@ for af_wrap in annotations.audio_files.values():
         conv = ndimage.gaussian_filter1d(spec_sum, 2)
 
         summit = np.zeros_like(conv, dtype=np.bool_)
+        # Compute local maxima (i.e. summits) to find potential calls
         # "<" guarantees the existance of only one point in the neighborhood
         summit[1:-1] = (conv[:-2] < conv[1:-1]) & (conv[1:-1] >= conv[2:])
         summit_i = np.flatnonzero(summit)
         
         if len(summit_i) == 0:
-            timestamps.append
+            # In case of no local maxima (really rare), add whole interval
+            calls.append(seg.copy())
+            continue
         
+        # Compute local minima (i.e. valleys) to normalize the summits
         valley = np.zeros_like(summit)
         valley[1:-1] = (conv[:-2] > conv[1:-1]) & (conv[1:-1] <= conv[2:])
         valley_i = np.flatnonzero(valley)
@@ -87,12 +91,15 @@ for af_wrap in annotations.audio_files.values():
         previous_valley = conv[valley_i[:-1]]
         next_valley = conv[valley_i[1:]]
         d = np.stack([previous_valley, next_valley])
+
+        # Normalize the summits by subtracting the mean of the left and right closest valleys
         spikes = conv[summit] - np.mean(d, axis=0)
 
         half_back = sample_subseg_dur // 2
 
         dconv = np.diff(conv)
 
+        # Get "derivative" local maxima and minima to find start and end of the call
         dsummit = np.zeros_like(summit)
         dsummit[2:-1] = (dconv[:-2] > dconv[1:-1]) & (dconv[1:-1] <= dconv[2:])
         dsummit_i = np.flatnonzero(dsummit)
@@ -132,8 +139,6 @@ for af_wrap in annotations.audio_files.values():
             y_subseg = np.zeros(dur_birdnet * sr)
             
             sub_dur = (se-ss) / sr
-
-            # print(ss)
             
             if sub_dur > dur_birdnet:
                 # Make sure that the duration is not longer than BirdNET allows
@@ -141,7 +146,6 @@ for af_wrap in annotations.audio_files.values():
                 ss = center - (sample_dur_birdnet // 2)
                 se = ss + sample_dur_birdnet
                 print(f"Warning: subsegment longer than {dur_birdnet}!")
-            # print(ss)
 
             ss = max(0, ss)
             se = min(len(y), se)
@@ -165,6 +169,7 @@ for af_wrap in annotations.audio_files.values():
             p_sorted = [i for i in p_sorted if i[1] >= conf_thresh]
 
             if p_sorted:
-                timestamps.append((tstart + TimeUnit(ss/sr), tstart + TimeUnit(se/sr)))
+                for p in p_sorted:
+                    calls.append((Segment(tstart + TimeUnit(ss/sr), tstart + TimeUnit(se/sr), p[0]), p[1]))
     
-    print(timestamps)
+    print(calls)
