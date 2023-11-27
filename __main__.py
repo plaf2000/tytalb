@@ -207,7 +207,7 @@ if __name__ == "__main__":
                                 action=BooleanOptionalAction,
                                 default=True)
     
-    validate_parser.add_argument("-ltv", "--label-settings-gt",
+    validate_parser.add_argument("-lgt", "--label-settings-gt",
                                 dest="gt_label_settings_path",
                                 help="Path to the file used to map and filter labels of the ground truth annotations."\
                                      "Please refer to `README.md`. By default the file is `labels.json` in the root"\

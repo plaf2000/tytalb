@@ -1,19 +1,22 @@
+import os
 import librosa
 import numpy as np
 from birdnetlib import analyzer, Recording
 import operator
 from scipy import signal,ndimage
-from annotations import Annotations
-from segment import Segment
+from annotations import Annotations, SegmentsWrapper
+from segment import Segment, ConfidenceFreqSegment
 from intervaltree import IntervalTree
 from units import TimeUnit
 from copy import deepcopy
+from table_writers import RavenWriter
+
 
 dur_birdnet = 3
 subseg_dur = .75
 margin = .2
 min_dur = .5
-conf_thresh = .9
+conf_thresh = .1
 
 an = analyzer.Analyzer(classifier_model_path=r"C:\Users\plaf\Music\ALAN_training\tytalb_hissing_cclassifier.tflite",
                        classifier_labels_path=r"C:\Users\plaf\Music\ALAN_training\tytalb_hissing_cclassifier_Labels.txt")
@@ -23,8 +26,9 @@ annotations.load()
 annotations.load_audio_paths("c:\\Users\\plaf\\Music\\ALAN_training\\audiofiles")
 
 
-for af_wrap in annotations.audio_files.values():
+for rel_path, af_wrap in annotations.audio_files.items():
     af = af_wrap.audio_file
+    segments_original = af_wrap.segments_interval_tree
     # Little trick to make the segments actually overlap:
     segments = [Segment(max(0, s.tstart - .1), s.tend, s.label) for s in af_wrap.segments]
     segments: IntervalTree = Segment.get_intervaltree(segments)
@@ -36,18 +40,14 @@ for af_wrap in annotations.audio_files.values():
     segments = sorted(segments, key = lambda s: s.begin)
     calls  = []
 
-
     for seg in segments:
         if not isinstance(seg, Segment):
             seg = Segment(tstart_s=seg.begin, tend_s=seg.end, label=seg.data)
-
-        
+                
 
         tstart = seg.tstart
         dur = seg.dur
         y, sr = librosa.load(af.path, sr=48000, mono=True, res_type="kaiser_fast", offset = tstart, duration=dur)
-
-
 
         sample_subseg_dur = int(subseg_dur * sr)
         sample_dur = int(dur * sr)
@@ -68,7 +68,8 @@ for af_wrap in annotations.audio_files.values():
         
         if len(summit_i) == 0:
             # In case of no local maxima (really rare), add whole interval
-            calls.append(seg.copy())
+            mean_conf = np.mean([s.confidence if isinstance(s, ConfidenceFreqSegment) else 1  for s in segments_original[tstart.s: (tstart+dur).s]])
+            calls.append(ConfidenceFreqSegment(seg.tstart, seg.tend, seg.label, confidence=mean_conf))
             continue
         
         # Compute local minima (i.e. valleys) to normalize the summits
@@ -170,6 +171,8 @@ for af_wrap in annotations.audio_files.values():
 
             if p_sorted:
                 for p in p_sorted:
-                    calls.append((Segment(tstart + TimeUnit(ss/sr), tstart + TimeUnit(se/sr), p[0]), p[1]))
+                    calls.append(ConfidenceFreqSegment(tstart + TimeUnit(ss/sr + margin), tstart + TimeUnit(se/sr - margin), label=p[0], confidence=p[1]))
     
-    print(calls)
+
+    writer = RavenWriter(os.path.join("C:\\Users\\plaf\\Music\\ALAN_training\\single_calls", f"{rel_path}.BirdNET.selection.table.txt"))
+    writer.write_segments_and_confidence(calls)

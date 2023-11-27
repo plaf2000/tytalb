@@ -42,16 +42,20 @@ class LabelMapper:
         return label
     
 class SegmentsWrapper:
-    def __init__(self, unique = True, segments: list[Segment] | None  = None, audio_file: AudioFile | None = None):
+    def __init__(self, unique = True, audio_file: AudioFile | None = None, segments: list[Segment] | None  = None):
         if segments is None:
             segments = []
         self.unique = unique
         self.segments: list[Segment] = segments
         self.audio_file: AudioFile | None = audio_file
     
+    
     @property
     def segments_interval_tree(self):
-        Segment.get_intervaltree(self.segments)
+        if self.segments:
+            return self.segments[0].get_intervaltree(self.segments)
+        else:
+            return Segment.get_intervaltree(self.segments)
     
         
 
@@ -220,8 +224,6 @@ class Annotations:
             segs = copy.audio_files[rel_path].segments
             copy.audio_files[rel_path].segments = [s for s in segs if s.confidence >= confidence_threshold]
         return copy
-
-        
 
 
     def validate(self, other: 'Annotations', *args, **kwargs):
@@ -452,9 +454,9 @@ def validate(
     return  stats(conf_time_matrix), stats(conf_count_matrix)
 
 def plot_stats(stats: tuple[pd.DataFrame, pd.DataFrame], fout: str):
+    # TODO: Implement this
     conf, metrics = stats
     labels = conf.columns.drop(["Confidence"])
-    print(labels)
 
 
 def plot_both_stats(statss, fouts):
