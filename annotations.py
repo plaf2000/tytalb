@@ -48,6 +48,11 @@ class SegmentsWrapper:
         self.unique = unique
         self.segments: list[Segment] = segments
         self.audio_file: AudioFile | None = audio_file
+    
+    @property
+    def segments_interval_tree(self):
+        Segment.get_intervaltree(self.segments)
+    
         
 
 class Annotations:
