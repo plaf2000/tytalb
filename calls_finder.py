@@ -69,7 +69,7 @@ for rel_path, af_wrap in annotations.audio_files.items():
         if len(summit_i) == 0:
             # In case of no local maxima (really rare), add whole interval
             mean_conf = np.mean([s.confidence if isinstance(s, ConfidenceFreqSegment) else 1  for s in segments_original[tstart.s: (tstart+dur).s]])
-            calls.append(ConfidenceFreqSegment(seg.tstart, seg.tend, seg.label, confidence=mean_conf))
+            calls.append(ConfidenceFreqSegment(seg.tstart, seg.tend, seg.label, confidence=round(mean_conf, 4)))
             continue
         
         # Compute local minima (i.e. valleys) to normalize the summits
@@ -171,7 +171,8 @@ for rel_path, af_wrap in annotations.audio_files.items():
 
             if p_sorted:
                 for p in p_sorted:
-                    calls.append(ConfidenceFreqSegment(tstart + TimeUnit(ss/sr + margin), tstart + TimeUnit(se/sr - margin), label=p[0], confidence=p[1]))
+                    calls.append(ConfidenceFreqSegment(tstart + TimeUnit(ss/sr + margin), tstart + TimeUnit(se/sr - margin), label=p[0], confidence=round(p[1], 4)))
+                    
     
 
     writer = RavenWriter(os.path.join("C:\\Users\\plaf\\Music\\ALAN_training\\single_calls", f"{rel_path}.BirdNET.selection.table.txt"))
