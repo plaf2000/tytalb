@@ -90,11 +90,14 @@ class RavenParser(TableParser):
         seen_segments = set()
         with open(table_path, encoding='utf-8') as fp:
             csvr = csv.reader(fp, delimiter=self.delimiter)
+            line_number = 0
             if self.header:
                 theader = next(csvr)
                 self.set_coli(theader)
+                line_number += 1
             for row in csvr:
-                segment = self.get_segment(row)
+                line_number += 1
+                segment = self.get_segment(row, line_number)
                 if (next_segment := (segment.tstart, segment.tend, segment.label)) not in seen_segments:
                     yield segment
                     seen_segments.add(next_segment)

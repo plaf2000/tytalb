@@ -8,12 +8,14 @@ class Segment(it.Interval):
     Extends the `intervaltree.Interval` class. Uses `bytearray` to represent the 
     label string in the data, in order to make it mutable.
     """
-    def __new__(cls, tstart_s: float, tend_s: float, label: str | bytearray = "", *args, **kwargs):
+    def __new__(cls, tstart_s: float, tend_s: float, label: str | bytearray = "", line_number: int = 0, *args, **kwargs):
         if isinstance(label, str):
             label = label.encode()
         if label is None:
             label = b""
-        return super(Segment, cls).__new__(cls, tstart_s, tend_s, bytearray(label))
+        instance = super(Segment, cls).__new__(cls, tstart_s, tend_s, bytearray(label))
+        instance.line_number = line_number
+        return instance
     
     def __deepcopy__(self, memo):
         cls = self.__class__

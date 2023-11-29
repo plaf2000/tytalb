@@ -6,6 +6,8 @@ from segment import Segment
 import json
 import fnmatch
 import re
+from loggers import Logger 
+import shutil
 from parsers import get_parser
 from loggers import ProcLogger, Logger, ProgressBar 
 from stats import calculate_and_save_stats
@@ -81,9 +83,17 @@ class Annotations:
 
         self.audio_files: dict[str, SegmentsWrapper] = dict()
         prog_bar = ProgressBar("Reading tables", len(self.tables_paths))
+
+        self.annotation_label_linenumber = dict()
+
         for table_path in self.tables_paths:
             for rel_path, segment in zip(self.parser.get_audio_rel_no_ext_paths(table_path, self.tables_dir), 
                                          self.parser.get_segments(table_path)):
+ 
+                if segment.label not in self.annotation_label_linenumber.keys():
+                    self.annotation_label_linenumber[segment.label] = []
+                self.annotation_label_linenumber[segment.label].append([rel_path, segment.line_number])
+            
                 basename = os.path.basename(rel_path)
                 unique = True
                 if rel_path in self.audio_files.keys():
@@ -115,13 +125,21 @@ class Annotations:
     def n_segments(self):
         return sum([len(af_wrap.segments) for af_wrap in self.audio_files.values()])
 
-    def extract_for_training(self, audio_files_dir: str, export_dir: str, logger: Logger, include_path=False, stats_only=False, **kwargs):
+    def extract_for_training(self, audio_files_dir: str, export_dir: str, logger: Logger, include_path=False, stats_only=False, occurrence_threshold=0, **kwargs):
         """
         Extract BIRDNET_AUDIO_DURATION-long chunks to train a custom classifier.
         """
         logger.print("Input annotations' folder:", self.tables_dir)
         logger.print("Input audio folder:", audio_files_dir)
         logger.print("Output audio folder:", export_dir)
+
+        annotation_label_linenumber_logger = Logger(logfile_path=os.path.join(export_dir, "annotation_label_linenumber.txt"), log_date=False)
+        annotation_label_linenumber_logger.print("List of annotations with files and line numbers where they are located:\n")
+
+        for key, value in self.annotation_label_linenumber.items():
+            annotation_label_linenumber_logger.print(f"{key}:")
+            for sub_list in value:
+                annotation_label_linenumber_logger.print(f"   {sub_list}")
 
         if not stats_only:
             prog_bar = ProgressBar("Retrieving audio paths", self.n_segments)
@@ -184,6 +202,15 @@ class Annotations:
             if not stats_only:
                 af_wrap.audio_file.export_all_birdnet(export_dir, af_wrap.segments, proc_logger=proc_logger, logger=logger, progress_bar=prog_bar, **kwargs)
         
+        if occurrence_threshold > 0:
+            shutil.copytree(export_dir, export_dir + "_all_audio")
+
+            list_of_dirs = [os.path.join(export_dir, el) for el in os.listdir(export_dir) if os.path.isdir(os.path.join(export_dir, el)) and el != "Noise"]
+
+            for directory in list_of_dirs:
+                if sum(1 for path in os.scandir(directory) if path.is_file()) < occurrence_threshold:
+                    shutil.rmtree(directory)
+
         calculate_and_save_stats(stats, stats_pad, export_dir)
         prog_bar.terminate()
 
