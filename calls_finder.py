@@ -135,8 +135,25 @@ for rel_path, af_wrap in annotations.audio_files.items():
         subseg_ends =  ((sample_end_i) * px_to_sample + margin * sr).astype(np.int64)
 
 
+        noise = []
+        for ss, se in zip(subseg_starts[1:], subseg_ends):
+            noise.append(y[se:ss])
+            
+        for i, (ss, se) in enumerate(zip(subseg_starts, subseg_ends)):
+            white_noise = []
+            
+            if i > 0:
+                white_noise.append(noise[i-1])
+            
+            if i < len(noise) - 1:
+                white_noise.append(noise[i+1])
+            
+            white_noise = np.concatenate(white_noise)
 
-        for ss, se in zip(subseg_starts, subseg_ends):
+            while len(white_noise) < sample_dur_birdnet:
+                white_noise = np.concatenate([white_noise, white_noise])
+            
+            white_noise = white_noise[:sample_dur_birdnet]
             y_subseg = np.zeros(dur_birdnet * sr)
             
             sub_dur = (se-ss) / sr
@@ -172,7 +189,7 @@ for rel_path, af_wrap in annotations.audio_files.items():
             if p_sorted:
                 for p in p_sorted:
                     calls.append(ConfidenceFreqSegment(tstart + TimeUnit(ss/sr + margin), tstart + TimeUnit(se/sr - margin), label=p[0], confidence=round(p[1], 4)))
-                    
+
     
 
     writer = RavenWriter(os.path.join("C:\\Users\\plaf\\Music\\ALAN_training\\single_calls", f"{rel_path}.BirdNET.selection.table.txt"))
