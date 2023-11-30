@@ -100,18 +100,6 @@ for rel_path, af_wrap in annotations.audio_files.items():
 
         dconv = np.diff(conv)
 
-        # Get "derivative" local maxima and minima to find start and end of the call
-        dsummit = np.zeros_like(summit)
-        dsummit[2:-1] = (dconv[:-2] > dconv[1:-1]) & (dconv[1:-1] <= dconv[2:])
-        dsummit_i = np.flatnonzero(dsummit)
-
-        dsummit[1] = summit_i[0] < dsummit_i[0]
-
-        dvalley = np.zeros_like(summit)
-        dvalley[2:-1] = (dconv[:-2] < dconv[1:-1]) & (dconv[1:-1] >= dconv[2:])
-        dvalley_i = np.flatnonzero(dvalley)
-
-        dvalley[-2] = summit_i[-1] > dvalley_i[-1]
 
 
         thresh = np.mean(spikes)
@@ -126,10 +114,6 @@ for rel_path, af_wrap in annotations.audio_files.items():
             sample_start_i[i] = ssi + np.argmax(dconv_)
             sample_end_i[i] = ssi + np.argmin(dconv_)
 
-
-        dsummit_i = np.flatnonzero(dsummit)
-        dvalley_i = np.flatnonzero(dvalley)
-
         px_to_sample = len(y) / len(conv)
         subseg_starts = ((sample_start_i) * px_to_sample - margin * sr).astype(np.int64)
         subseg_ends =  ((sample_end_i) * px_to_sample + margin * sr).astype(np.int64)
@@ -138,7 +122,7 @@ for rel_path, af_wrap in annotations.audio_files.items():
         noise = []
         for ss, se in zip(subseg_starts[1:], subseg_ends):
             noise.append(y[se:ss])
-            
+
         for i, (ss, se) in enumerate(zip(subseg_starts, subseg_ends)):
             white_noise = []
             
@@ -192,5 +176,5 @@ for rel_path, af_wrap in annotations.audio_files.items():
 
     
 
-    writer = RavenWriter(os.path.join("C:\\Users\\plaf\\Music\\ALAN_training\\single_calls", f"{rel_path}.BirdNET.selection.table.txt"))
+    writer = RavenWriter(os.path.join("C:\\Users\\plaf\\Music\\ALAN_training\\single_calls_ambient_noise", f"{rel_path}.BirdNET.selection.table.txt"))
     writer.write_segments_and_confidence(calls)
