@@ -1,3 +1,4 @@
+import time
 import os
 import librosa
 import numpy as np
@@ -12,11 +13,17 @@ from copy import deepcopy
 from table_writers import RavenWriter
 
 
+
+
+
 dur_birdnet = 3
 subseg_dur = .75
 margin = .2
 min_dur = .5
 conf_thresh = .1
+random_seed = 42
+
+np.random.seed(random_seed)
 
 an = analyzer.Analyzer(classifier_model_path=r"C:\Users\plaf\Music\ALAN_training\tytalb_hissing_cclassifier.tflite",
                        classifier_labels_path=r"C:\Users\plaf\Music\ALAN_training\tytalb_hissing_cclassifier_Labels.txt")
@@ -27,6 +34,9 @@ annotations.load_audio_paths("c:\\Users\\plaf\\Music\\ALAN_training\\audiofiles"
 
 
 for rel_path, af_wrap in annotations.audio_files.items():
+    print("==================")
+    print("Changed audio file")
+    print("==================")
     af = af_wrap.audio_file
     segments_original = af_wrap.segments_interval_tree
     # Little trick to make the segments actually overlap:
@@ -41,6 +51,7 @@ for rel_path, af_wrap in annotations.audio_files.items():
     calls  = []
 
     for seg in segments:
+        ts = time.time()
         if not isinstance(seg, Segment):
             seg = Segment(tstart_s=seg.begin, tend_s=seg.end, label=seg.data)
                 
@@ -48,7 +59,8 @@ for rel_path, af_wrap in annotations.audio_files.items():
         tstart = seg.tstart
         dur = seg.dur
         y, sr = librosa.load(af.path, sr=48000, mono=True, res_type="kaiser_fast", offset = tstart, duration=dur)
-
+        print("Loaded audio file:", time.time()-ts)
+        ts = time.time()
         sample_subseg_dur = int(subseg_dur * sr)
         sample_dur = int(dur * sr)
         sample_dur_birdnet = int(dur_birdnet * sr)
@@ -61,10 +73,11 @@ for rel_path, af_wrap in annotations.audio_files.items():
         conv = ndimage.gaussian_filter1d(spec_sum, 2)
 
         summit = np.zeros_like(conv, dtype=np.bool_)
-        # Compute local maxima (i.e. summits) to find potential calls
-        # "<" guarantees the existance of only one point in the neighborhood
         summit[1:-1] = (conv[:-2] < conv[1:-1]) & (conv[1:-1] >= conv[2:])
         summit_i = np.flatnonzero(summit)
+
+        print("Stft + sum + conv:", time.time()-ts)
+        ts = time.time()
         
         if len(summit_i) == 0:
             # In case of no local maxima (really rare), add whole interval
@@ -114,31 +127,50 @@ for rel_path, af_wrap in annotations.audio_files.items():
             sample_start_i[i] = ssi + np.argmax(dconv_)
             sample_end_i[i] = ssi + np.argmin(dconv_)
 
+        print("Starts&ends:", time.time()-ts)
+        ts = time.time()
+
         px_to_sample = len(y) / len(conv)
         subseg_starts = ((sample_start_i) * px_to_sample - margin * sr).astype(np.int64)
         subseg_ends =  ((sample_end_i) * px_to_sample + margin * sr).astype(np.int64)
 
+        if len(subseg_starts) == 0 or len(subseg_ends) == 0:
+            mean_conf = np.mean([s.confidence if isinstance(s, ConfidenceFreqSegment) else 1  for s in segments_original[tstart.s: (tstart+dur).s]])
+            calls.append(ConfidenceFreqSegment(seg.tstart, seg.tend, seg.label, confidence=round(mean_conf, 4)))
+            continue
 
-        noise = []
+
+        noise = [y[:subseg_starts[0]]]
         for ss, se in zip(subseg_starts[1:], subseg_ends):
             noise.append(y[se:ss])
+        noise.append(y[subseg_ends[-1]:])
+
+        print("Noise:", time.time()-ts)
 
         for i, (ss, se) in enumerate(zip(subseg_starts, subseg_ends)):
-            white_noise = []
-            
-            if i > 0:
-                white_noise.append(noise[i-1])
-            
-            if i < len(noise) - 1:
-                white_noise.append(noise[i+1])
+            ts = time.time()
+
+            white_noise = [noise[i], noise[i+1]]
+            white_noise_tot_l = sum([len(w) for w in white_noise])
             
             white_noise = np.concatenate(white_noise)
 
+            print("Concatenated:", time.time()-ts)
+            ts = time.time()
+
             while len(white_noise) < sample_dur_birdnet:
+                if white_noise_tot_l < sr * .05:
+                    white_noise = np.zeros(sample_dur_birdnet)
+                    print("Noise too short!")
+                    print("--------------------")
+                    break
                 white_noise = np.concatenate([white_noise, white_noise])
-            
+
             white_noise = white_noise[:sample_dur_birdnet]
             y_subseg = np.zeros(dur_birdnet * sr)
+
+            print("White noise:", time.time()-ts)
+            ts = time.time()
             
             sub_dur = (se-ss) / sr
             
