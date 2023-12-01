@@ -209,5 +209,5 @@ def multi_processes(annotations: Annotations, classifier_model_path: str, out_di
 if __name__ == "__main__":
     annotations = Annotations(r"C:\Users\plaf\Music\ALAN_training\validation\hissing_only", "bnrv")
     annotations.load()
-    annotations.load_audio_paths("c:\\Users\\plaf\\Music\\ALAN_training\\audiofiles")
+    annotations.load_audio_paths("c:\\Users\\plaf\\Music\\ALAN_training\\audiofiles") 
     multi_processes(annotations, r"C:\Users\plaf\Music\ALAN_training\tytalb_hissing_cclassifier.tflite", r"C:\Users\plaf\Music\ALAN_training\single_calls_ambient_noise")
