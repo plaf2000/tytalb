@@ -1,3 +1,4 @@
+import copy
 from multiprocessing import pool
 import time
 import os
@@ -26,12 +27,12 @@ random_seed = 42
 
 def find_calls(rel_paths: list[str], af_wraps: list[SegmentsWrapper], classifier_model_path: str, out_dir: str):
     for rel_path, af_wrap in zip(rel_paths, af_wraps):
+
         print(f"Analyzing {rel_path}...")
         classifier_labels_path = classifier_model_path.replace(".tflite", "_Labels.txt") 
         an = analyzer.Analyzer(classifier_model_path=classifier_model_path,
                             classifier_labels_path=classifier_labels_path)
         af = af_wrap.audio_file
-        print(af_wrap.segments)
 
         segments_original = af_wrap.segments_interval_tree
 
@@ -81,13 +82,6 @@ def find_calls(rel_paths: list[str], af_wraps: list[SegmentsWrapper], classifier
             valley[-1] = summit_i[-1] > valley_i[-1]
 
             valley_i = np.flatnonzero(valley)
-
-            times_spec = np.linspace(0, dur, spec.shape[1])
-
-            l = len(conv)
-            times_plot = np.linspace(0, dur, l)
-            pow_threshold = np.mean(conv)
-
 
             previous_valley = conv[valley_i[:-1]]
             next_valley = conv[valley_i[1:]]
@@ -186,9 +180,6 @@ def find_calls(rel_paths: list[str], af_wraps: list[SegmentsWrapper], classifier
 
 
 def multi_processes(annotations: Annotations, classifier_model_path: str, out_dir: str, n_processes = 8):
-
-    p = pool.Pool()
-    print([a for a in annotations.audio_files.values()][0].segments)
     keys = list(annotations.audio_files.keys())
     values = list(annotations.audio_files.values())
     n_processes = min(n_processes, len(keys))
@@ -198,15 +189,16 @@ def multi_processes(annotations: Annotations, classifier_model_path: str, out_di
     n_segments, keys, values = (list(t) for t in zip(*sorted(zip(n_segments, keys, values))))
 
     rel_paths = []
-    seg_wrappers = []
+    af_wrappers = []
 
     for i in range(n_processes):
         rel_paths.append(keys[i::n_processes])
-        seg_wrappers.append(values[i::n_processes])
-    exit()
+        af_wrappers.append(values[i::n_processes])
+
+    p = pool.Pool(n_processes)
     p.starmap(find_calls, zip(
         rel_paths,
-        seg_wrappers,
+        af_wrappers,
         [classifier_model_path for _ in range(n_processes)],
         [out_dir for _ in range(n_processes)],
     ))

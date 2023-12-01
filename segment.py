@@ -8,6 +8,7 @@ class Segment(it.Interval):
     Extends the `intervaltree.Interval` class. Uses `bytearray` to represent the 
     label string in the data, in order to make it mutable.
     """
+
     def __new__(cls, tstart_s: float, tend_s: float, label: str | bytearray = "", *args, **kwargs):
         if isinstance(label, str):
             label = label.encode()
@@ -15,11 +16,25 @@ class Segment(it.Interval):
             label = b""
         return super(Segment, cls).__new__(cls, tstart_s, tend_s, bytearray(label))
     
+    
+    def _get_fields(self):
+        if self.label is not None and self.label != "":
+            return self.tstart, self.tend, self.label
+        else:
+            return self.tstart, self.tend
+    
+    
     def __deepcopy__(self, memo):
         cls = self.__class__
-        result = cls(self.begin, self.end, self.data)
+        result = cls(*self._get_fields())
         memo[id(self)] = result
         return result
+
+    def __copy__(self):
+        return self.__class__(*self._get_fields())
+    
+    def __reduce__(self):
+        return self.__class__, self._get_fields()
 
     @property
     def tstart(self):
@@ -67,7 +82,7 @@ class Segment(it.Interval):
         return self.overlapping_time(other)/self.dur
     
 
-    def __str__(self):
+    def __repr__(self):
         seg_name = f" \"{self.label}\"" if self.label is not None else ""
         return f"Segment{seg_name}: [{self.tstart.time_str(True)}, {self.tend.time_str(True)}]"
     
@@ -87,37 +102,26 @@ class Segment(it.Interval):
 
     
 
-class DurSegment(Segment):
-    def __new__(cls, tstart_s: float, dur_s: float, label, *args, **kwargs):
-        return super().__new__(cls, tstart_s, tstart_s+dur_s, label, *args, **kwargs)
+def durSegment(tstart_s: float, dur_s: float, label, *args, **kwargs):
+    return Segment(tstart_s, tstart_s+dur_s, label, *args, **kwargs)
     
 
 class ConfidenceSegment(Segment):
     def __init__(self, tstart_s: float, tend_s: float, label: str | bytearray = "", confidence = 1, *args, **kwargs):
         self.confidence = float(confidence)
 
-    def __str__(self):
-        return f"{super().__str__()} Confidence: {str(self.confidence)}"
-
-    def __deepcopy__(self, memo):
-        copy = super().__deepcopy__(memo)
-        copy.confidence = self.confidence
-        return copy
+    def __repr__(self):
+        return f"{super().__repr__()} Confidence: {str(self.confidence)}"
+    
+    def _get_fields(self):
+        return self.tstart, self.tend, self.label, self.confidence
 
 
 
 
-class ConfidenceDurSegment(DurSegment):
-    def __init__(self, tstart_s: float, dur: float, label: str | bytearray = "", confidence = 1, *args, **kwargs):
-        self.confidence = float(confidence)
 
-    def __str__(self):
-        return f"{super().__str__()} Confidence: {str(self.confidence)}"
-
-    def __deepcopy__(self, memo):
-        copy = super().__deepcopy__(memo)
-        copy.confidence = self.confidence
-        return copy
+def confidenceDurSegment(tstart_s: float, dur_s: float, label: str | bytearray = "", confidence = 1, *args, **kwargs):
+    return ConfidenceSegment(tstart_s, tstart_s+dur_s, label, confidence, *args, **kwargs)
 
 
 
@@ -128,34 +132,17 @@ class ConfidenceFreqSegment(ConfidenceSegment):
         self.fstart = fstart
         self.fend = fend
 
-    def __str__(self):
-        return f"{super().__str__()} Frequencies: [{self.fstart:.4f}, {self.fend:.4f}] Confidence: {str(self.confidence)}"
+    def __repr__(self):
+        return f"{super().__repr__()} Frequencies: [{self.fstart:.4f}, {self.fend:.4f}] Confidence: {str(self.confidence)}"
 
-    def __deepcopy__(self, memo):
-        copy = super().__deepcopy__(memo)
-        copy.confidence = self.confidence
-        copy.fstart = self.fstart
-        copy.fend = self.fend
-        return copy
+    def _get_fields(self):
+            return self.tstart, self.tend, self.label, self.fstart, self.fend, self.confidence
 
 
 
+def confidenceDurFreqSegment(tstart_s: float, dur_s: float, label: str | bytearray = "", fstart = 0, fend = 15000, confidence = 1, *args, **kwargs):
+    return ConfidenceFreqSegment(tstart_s, tstart_s+dur_s, label, label, fstart, fend, confidence, *args, **kwargs)
 
-class ConfidenceDurFreqSegment(ConfidenceDurSegment):
-    def __init__(self, tstart_s: float, dur: float, label: str | bytearray = "", fstart = 0, fend = 15000, confidence = 1, *args, **kwargs):
-        self.confidence = float(confidence)
-        self.fstart = fstart
-        self.fend = fend
-
-    def __str__(self):
-        return f"{super().__str__()} Frequencies: [{self.fstart:.4f}, {self.fend:.4f}] Confidence: {str(self.confidence)}"
-
-    def __deepcopy__(self, memo):
-        copy = super().__deepcopy__(memo)
-        copy.confidence = self.confidence
-        copy.fstart = self.fstart
-        copy.fend = self.fend
-        return copy
 
 
 

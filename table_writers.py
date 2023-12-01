@@ -64,7 +64,7 @@ class RavenWriter(TableWriter):
             segment.fend,
             segment.label,
             str(segment.label).split("_")[1],
-            confidence
+            round(confidence,4)
         ])
         self.writer.writerow(row)
         self.sel_i += 1

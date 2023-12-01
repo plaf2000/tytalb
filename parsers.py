@@ -1,5 +1,5 @@
 from generic_parser import TableParser, Column, FloatColumn
-from segment import DurSegment, Segment, ConfidenceSegment
+from segment import durSegment, Segment, ConfidenceSegment
 from audio_file import AudioFile
 from inspect import signature
 import csv
@@ -110,7 +110,7 @@ class KaleidoscopeParser(TableParser):
         tend = FloatColumn("DURATION", 4),
         label = Column("scientific_name", 5),
         table_fnmatch = "*.csv",
-        segment_type = DurSegment,
+        segment_type = durSegment,
         table_per_file = False,
         **kwargs
     ):
