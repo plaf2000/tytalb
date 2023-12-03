@@ -173,14 +173,14 @@ def find_calls_file(af_wrap: SegmentsWrapper, an: analyzer.Analyzer, logger = Lo
 
 
 
-def find_calls(af_wraps: list[SegmentsWrapper], classifier_model_path: str, out_dir: str, logger=Logger()):
+def find_calls(rel_paths: list[str], af_wraps: list[SegmentsWrapper], classifier_model_path: str, out_dir: str, logger=Logger()):
     an = analyzer.Analyzer(classifier_model_path=classifier_model_path,
                            classifier_labels_path=get_label_path(classifier_model_path))    
-    for af_wrap in af_wraps:
+    for rel_path, af_wrap in zip(rel_paths, af_wraps):
         af_path = af_wrap.audio_file.path
         try:
             calls = find_calls_file(af_wrap, an, logger)
-            writer = RavenWriter(os.path.join(out_dir, f"{af_path}.BirdNET.selection.table.txt"))
+            writer = RavenWriter(os.path.join(out_dir, f"{rel_path}.BirdNET.selection.table.txt"))
             writer.write_segments_and_confidence(calls)
             logger.print(f"Written to output {len(calls)} calls from {af_path}...")
         except Exception as e:
@@ -192,19 +192,23 @@ def find_calls(af_wraps: list[SegmentsWrapper], classifier_model_path: str, out_
 
 def multi_processes(annotations: Annotations, classifier_model_path: str, out_dir: str, n_processes = 8, logger = Logger()):
     values = list(annotations.audio_files.values())
+    keys = list(annotations.audio_files.keys())
     n_processes = min(n_processes, len(values))
     n_segments = [len(v.segments) for v in values]
 
     # Order by the number of segments to have a fairer sharing across processes
-    n_segments, values = (list(t) for t in zip(*sorted(zip(n_segments, values), key=lambda pair: pair[0])))
+    n_segments, keys, values = (list(t) for t in zip(*sorted(zip(n_segments, keys, values), key=lambda pair: pair[0])))
 
     af_wrappers = []
+    rel_paths = []
 
     for i in range(n_processes):
+        rel_paths.append(keys[i::n_processes])
         af_wrappers.append(values[i::n_processes])
 
     p = pool.Pool(n_processes)
     p.starmap(find_calls, zip(
+        rel_paths,
         af_wrappers,
         [classifier_model_path for _ in range(n_processes)],
         [out_dir for _ in range(n_processes)],
