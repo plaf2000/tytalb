@@ -61,23 +61,29 @@ def find_calls_file(af_wrap: SegmentsWrapper, an: analyzer.Analyzer, logger = Lo
         conv = ndimage.gaussian_filter1d(spec_sum, 2)
 
         summit = np.zeros_like(conv, dtype=np.bool_)
-        summit[1:-1] = (conv[:-2] < conv[1:-1]) & (conv[1:-1] >= conv[2:])
-        summit_i = np.flatnonzero(summit)
 
-        
-        if len(summit_i) == 0:
+
+
+        summit[1:-1] = (conv[:-2] < conv[1:-1]) & (conv[1:-1] >= conv[2:])
+
+        if not np.any(summit):
             # In case of no local maxima (really rare), add whole interval
             mean_conf = np.mean([s.confidence if isinstance(s, ConfidenceFreqSegment) else 1  for s in segments_original[tstart.s: (tstart+dur).s]])
             calls.append(ConfidenceFreqSegment(seg.tstart, seg.tend, seg.label, confidence=round(mean_conf, 4)))
             continue
+
+        summit_i = np.flatnonzero(summit)
+
+        
+
         
         # Compute local minima (i.e. valleys) to normalize the summits
         valley = np.zeros_like(summit)
         valley[1:-1] = (conv[:-2] > conv[1:-1]) & (conv[1:-1] <= conv[2:])
         valley_i = np.flatnonzero(valley)
 
-        valley[0] = summit_i[0] < valley_i[0]
-        valley[-1] = summit_i[-1] > valley_i[-1]
+        valley[0] = len(valley_i) == 0 or summit_i[0] < valley_i[0]
+        valley[-1] = len(valley_i) == 0 or summit_i[-1] > valley_i[-1]
 
         valley_i = np.flatnonzero(valley)
 
