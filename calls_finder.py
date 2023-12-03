@@ -175,7 +175,7 @@ def find_calls_file(af_wrap: SegmentsWrapper, an: analyzer.Analyzer, logger = Lo
 
 def find_calls(af_wraps: list[SegmentsWrapper], classifier_model_path: str, out_dir: str, logger=Logger()):
     an = analyzer.Analyzer(classifier_model_path=classifier_model_path,
-                           classifier_labels_path=get_label_path(classifier_model_path))
+                           classifier_labels_path=get_label_path(classifier_model_path))    
     for af_wrap in af_wraps:
         af_path = af_wrap.audio_file.path
         try:
@@ -196,7 +196,7 @@ def multi_processes(annotations: Annotations, classifier_model_path: str, out_di
     n_segments = [len(v.segments) for v in values]
 
     # Order by the number of segments to have a fairer sharing across processes
-    n_segments, values = (list(t) for t in zip(*sorted(zip(n_segments, values))))
+    n_segments, values = (list(t) for t in zip(*sorted(zip(n_segments, values), key=lambda pair: pair[0])))
 
     af_wrappers = []
 
