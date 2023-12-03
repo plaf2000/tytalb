@@ -448,10 +448,11 @@ if __name__ == "__main__":
         save_stats(stats_time, "time")
         save_stats(stats_count, "count")
     elif args.action=="calls":
+        logger = Logger(logfile_path=os.path.join(args.output_dir, "log.txt"))
         annotations = Annotations(args.tables_dir, "bnrv")
         annotations.load()
         annotations.load_audio_paths(args.audio_files_dir)
-        multi_processes(annotations, args.custom_classifier, args.output_dir, args.n_processes)
+        multi_processes(annotations, args.custom_classifier, args.output_dir, args.n_processes, logger)
 
         
 
