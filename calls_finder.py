@@ -64,7 +64,9 @@ def find_calls_file(af_wrap: SegmentsWrapper, an: analyzer.Analyzer, logger = Lo
 
 
 
-        summit[1:-1] = (conv[:-2] < conv[1:-1]) & (conv[1:-1] >= conv[2:])
+        summit[1:-1] = (conv[:-2] <= conv[1:-1]) & (conv[1:-1] >= conv[2:])
+        # Force the existance of only one point (the first one) in the neighborhood:
+        summit[1:] &= ~summit[:-1] 
 
         if not np.any(summit):
             # In case of no local maxima (really rare), add whole interval
@@ -74,18 +76,17 @@ def find_calls_file(af_wrap: SegmentsWrapper, an: analyzer.Analyzer, logger = Lo
 
         summit_i = np.flatnonzero(summit)
 
-        
-
-        
         # Compute local minima (i.e. valleys) to normalize the summits
         valley = np.zeros_like(summit)
-        valley[1:-1] = (conv[:-2] > conv[1:-1]) & (conv[1:-1] <= conv[2:])
+        valley[1:-1] = (conv[:-2] >= conv[1:-1]) & (conv[1:-1] <= conv[2:])
+        # Force the existance of only one point (the first one) in the neighborhood:
+        valley[1:] &= ~valley[:-1] 
         valley_i = np.flatnonzero(valley)
 
         valley[0] = len(valley_i) == 0 or summit_i[0] < valley_i[0]
         valley[-1] = len(valley_i) == 0 or summit_i[-1] > valley_i[-1]
-
         valley_i = np.flatnonzero(valley)
+
 
         previous_valley = conv[valley_i[:-1]]
         next_valley = conv[valley_i[1:]]
