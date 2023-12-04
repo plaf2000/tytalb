@@ -4,15 +4,15 @@ import time
 import os
 import librosa
 import numpy as np
-from birdnetlib import analyzer, Recording
+from birdnetlib import analyzer
 import operator
-from scipy import signal,ndimage
+from scipy import ndimage
 from annotations import Annotations, SegmentsWrapper
 from segment import Segment, ConfidenceFreqSegment
 from intervaltree import IntervalTree
 from units import TimeUnit
 from copy import deepcopy
-from table_writers import RavenWriter
+from table_writers import RavenWriter   
 from loggers import Logger
 
 
@@ -189,7 +189,7 @@ def find_calls(rel_paths: list[str], af_wraps: list[SegmentsWrapper], classifier
             calls = find_calls_file(af_wrap, an, logger)
             writer = RavenWriter(os.path.join(out_dir, f"{rel_path}.BirdNET.selection.table.txt"))
             writer.write_segments_and_confidence(calls)
-            logger.print(f"Written to output {len(calls)} calls from {af_path}...")
+            logger.print(f"Written to output {len(calls)} calls from {af_path}.")
         except Exception as e:
             logger.print(f"An exception occoured while analyzing {af_path}:")
             logger.print_exception(e)
@@ -226,7 +226,8 @@ def multi_processes(annotations: Annotations, classifier_model_path: str, out_di
     p.join()
 
 if __name__ == "__main__":
+    # Example of usage
     annotations = Annotations(r"C:\Users\plaf\Music\ALAN_training\validation\hissing_only", "bnrv")
     annotations.load()
-    annotations.load_audio_paths("c:\\Users\\plaf\\Music\\ALAN_training\\audiofiles") 
+    annotations.load_audio_paths(r"c:\Users\plaf\Music\ALAN_training\audiofiles") 
     multi_processes(annotations, r"C:\Users\plaf\Music\ALAN_training\tytalb_hissing_cclassifier.tflite", r"C:\Users\plaf\Music\ALAN_training\single_calls_ambient_noise")
