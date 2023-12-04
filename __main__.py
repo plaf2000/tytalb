@@ -316,7 +316,7 @@ if __name__ == "__main__":
 
     if args.action == "extract":
         os.makedirs(args.export_dir, exist_ok=True)
-        export_dir =args.export_dir       
+        export_dir = args.export_dir       
         if args.tstamp_outdir:
             export_dir = os.path.join(args.export_dir, datetime.utcnow().strftime("%Y%m%d_%H%M%SUTC"))
             os.mkdir(export_dir)
@@ -448,6 +448,7 @@ if __name__ == "__main__":
         save_stats(stats_time, "time")
         save_stats(stats_count, "count")
     elif args.action=="calls":
+        os.makedirs(args.output_dir, exist_ok=True)
         logger = Logger(logfile_path=os.path.join(args.output_dir, "log.txt"))
         annotations = Annotations(args.tables_dir, "bnrv")
         annotations.load()
