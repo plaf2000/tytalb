@@ -92,8 +92,10 @@ def find_calls_file(af_wrap: SegmentsWrapper, an: analyzer.Analyzer, logger = Lo
         next_valley = conv[valley_i[1:]]
         d = np.stack([previous_valley, next_valley])
 
-        # Normalize the summits by subtracting the mean of the left and right closest valleys
-        spikes = conv[summit] - np.mean(d, axis=0)
+        # Normalize the summits by subtracting the interpolation of the left and right closest valleys
+        m = (d[1] - d[0]) / (valley_i[1:] - valley_i[:-1])
+        f = m * (summit_i - valley_i[:-1]) + d[0]
+        spikes = conv[summit] - f
 
 
         dconv = np.diff(conv)
