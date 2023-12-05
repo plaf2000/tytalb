@@ -16,6 +16,7 @@ import pandas as pd
 import numpy as np
 import os
 from units import TimeUnit
+from collections import defaultdict
 
 
 class LabelMapper:
@@ -133,11 +134,11 @@ class Annotations:
         logger.print("Input audio folder:", audio_files_dir)
         logger.print("Output audio folder:", export_dir)
 
-        annotation_label_linenumber_logger = Logger(logfile_path=os.path.join(export_dir, "annotation_label_linenumber.txt"), log_date=False)
-        annotation_label_linenumber_logger.print("List of annotations with files and line numbers where they are located:\n")
-
+        annotation_label_linenumber_dir = os.path.join(export_dir, "label_filename_linenumber")
+        os.makedirs(annotation_label_linenumber_dir, exist_ok = True)
+        
         for key, value in self.annotation_label_linenumber.items():
-            annotation_label_linenumber_logger.print(f"{key}:")
+            annotation_label_linenumber_logger = Logger(logfile_path=os.path.join(annotation_label_linenumber_dir, f"{key}.txt",), log_date=False)
             for sub_list in value:
                 annotation_label_linenumber_logger.print(f"   {sub_list}")
 
@@ -187,17 +188,18 @@ class Annotations:
         proc_logger = ProcLogger(**kwargs)
         logger.print("Found", len(self.audio_files), "audio files.")
 
-        stats_pad = {}
-        stats = {} 
+        stats = defaultdict(lambda: [0, 0])
+        stats_pad = defaultdict(lambda: [0, 0])
+
         for af_wrap in self.audio_files.values():
             for segment in af_wrap.segments:
                 segment_pad = segment.birdnet_pad()
-                if (label := segment.label) not in stats.keys():           
-                    stats[label] = segment.dur
-                    stats_pad[label] = segment_pad.dur
-                else:
-                    stats[label] += segment.dur
-                    stats_pad[label] += segment_pad.dur
+                label = segment.label
+                stats[label][0] += segment.dur
+                stats[label][1] += 1
+
+                stats_pad[label][0] += segment_pad.dur
+                stats_pad[label][1] += 1
                 
             if not stats_only:
                 af_wrap.audio_file.export_all_birdnet(export_dir, af_wrap.segments, proc_logger=proc_logger, logger=logger, progress_bar=prog_bar, **kwargs)
