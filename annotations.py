@@ -6,6 +6,8 @@ from segment import Segment
 import json
 import fnmatch
 import re
+from loggers import Logger 
+import shutil
 from parsers import get_parser
 from loggers import ProcLogger, Logger, ProgressBar 
 from stats import calculate_and_save_stats
@@ -84,15 +86,12 @@ class Annotations:
         self.audio_files: dict[str, SegmentsWrapper] = dict()
         prog_bar = ProgressBar("Reading tables", len(self.tables_paths))
 
-        for table_path in self.tables_paths:
-            if self.parser.table_per_file\
-               and list_rel_paths is not None\
-               and self.parser.get_audio_rel_no_ext_path(table_path, self.tables_dir) not in list_rel_paths:
-                continue
-            for rel_path, segment in zip(self.parser.get_audio_rel_no_ext_paths(table_path, self.tables_dir), 
-                                         self.parser.get_segments(table_path)):
+
+        self.annotation_label_linenumber = dict()
+
                 if list_rel_paths is not None and rel_path not in list_rel_paths:
                     break
+
                 basename = os.path.basename(rel_path)
                 if rel_path in self.audio_files.keys():
                     self.audio_files[rel_path].segments.append(segment)
@@ -159,7 +158,7 @@ class Annotations:
     def n_segments(self):
         return sum([len(af_wrap.segments) for af_wrap in self.audio_files.values()])
 
-    def extract_for_training(self, audio_files_dir: str, export_dir: str, logger: Logger, include_path=False, stats_only=False, **kwargs):
+    def extract_for_training(self, audio_files_dir: str, export_dir: str, logger: Logger, include_path=False, stats_only=False, occurrence_threshold=0, **kwargs):
         """
         Extract BIRDNET_AUDIO_DURATION-long chunks to train a custom classifier.
         """
@@ -169,6 +168,7 @@ class Annotations:
 
         self.load(logger, **kwargs)
         self.map_labels(**kwargs)
+
 
         if not stats_only:
             self.load_audio_paths(audio_files_dir, **kwargs)
@@ -199,6 +199,7 @@ class Annotations:
                 
             if not stats_only:
                 af_wrap.audio_file.export_all_birdnet(export_dir, af_wrap.segments, proc_logger=proc_logger, logger=logger, progress_bar=prog_bar, **kwargs)
+
         calculate_and_save_stats(stats, stats_pad, export_dir)
         prog_bar.terminate()
 
