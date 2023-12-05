@@ -8,7 +8,7 @@ def calculate_and_save_stats(data_dict, data_dict_pad, export_dir):
     for el, data, file_suffix in zip(["STATISTICS", "STATISTICS PADDED"], [data_dict, data_dict_pad], ["", "_padded"]):
         stats_str = f"-----{el}-----\n\n"
 
-        data = dict(sorted(list(map(list, data.items())), key=lambda item: (item[0].split()[0], -item[1][1]), reverse=False))
+        data = dict(sorted(list(map(list, data.items())), key=lambda item: -item[1][1], reverse=False))
 
         labels = list(data.keys())
         values = list(data.values())

@@ -91,6 +91,8 @@ class Annotations:
             for rel_path, segment in zip(self.parser.get_audio_rel_no_ext_paths(table_path, self.tables_dir), 
                                          self.parser.get_segments(table_path)):
  
+                segment.label = ' '.join(re.sub(r'[\\/*?:"<>|]', '', segment.label).lower().split())
+
                 if segment.label not in self.annotation_label_linenumber.keys():
                     self.annotation_label_linenumber[segment.label] = []
                 self.annotation_label_linenumber[segment.label].append([rel_path, segment.line_number])
