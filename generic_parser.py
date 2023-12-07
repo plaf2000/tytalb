@@ -48,6 +48,7 @@ class TableParser:
     segment_type: Segment
     header: bool = True
     table_fnmatch: str = "*.csv"
+    table_per_file: bool = True
 
     def __post_init__(self):
         # `self.columns` lists the columns used for retrieving the segment data (order is relevant!)
@@ -91,10 +92,21 @@ class TableParser:
                 line_number += 1
                 yield self.get_segment(row, line_number)
 
+    def get_audio_rel_no_ext_path(self, table_path: str, tables_base_path: str):
+        table_basename = os.path.basename(table_path)
+        table_subpath = os.path.dirname(table_path)
+        table_subpath = table_subpath[len(tables_base_path):]
+        
+        while table_subpath.startswith(os.sep):
+            table_subpath = table_subpath[1:]
+        audio_rel_no_ext_paths = os.path.join(table_subpath, table_basename.split(".")[0])
+
+        return audio_rel_no_ext_paths
+
     def get_audio_rel_no_ext_paths(self, table_path: str, tables_base_path: str):
         """
         Given the table path, the directory containing the audio file and the audio file
-        extenstion, returns a generator that yields the path to theaudio file corresponding 
+        extenstion, returns a generator that yields the path to the audio file corresponding 
         to each segment.
         The path is relative to the `tables_base_path` and doesn't contain the audio file 
         extension. 
@@ -105,11 +117,7 @@ class TableParser:
         by looking in the audio directory for audio files that have the same 
         name as the table + the provided extension in the arguments.
         """
-        table_basename = os.path.basename(table_path)
-        table_subpath = os.path.dirname(table_path)[len(tables_base_path):]
-        while table_subpath.startswith(os.sep):
-            table_subpath = table_subpath[1:]
-        audio_rel_no_ext_paths = os.path.join(table_subpath, table_basename.split(".")[0])
+        audio_rel_no_ext_paths = self.get_audio_rel_no_ext_path(table_path, tables_base_path)
         with open(table_path, encoding='utf-8') as fp:
             csvr = csv.reader(fp, delimiter=self.delimiter)
             for _ in csvr:

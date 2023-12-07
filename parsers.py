@@ -67,6 +67,7 @@ class AudacityParser(TableParser):
         segment_type = Segment,
         header = False,
         table_fnmatch = "*.txt",
+        table_per_file = True,
         **kwargs
     ):
         super().__init__(**collect_args(locals())) 
@@ -82,6 +83,7 @@ class RavenParser(TableParser):
         label = Column("Annotation", 10),
         table_fnmatch = "*.selections.txt",
         segment_type = Segment,
+        table_per_file = True,
         **kwargs
     ):
         super().__init__(**collect_args(locals())) 
@@ -112,6 +114,7 @@ class KaleidoscopeParser(TableParser):
         label = Column("scientific_name", 5),
         table_fnmatch = "*.csv",
         segment_type = DurSegment,
+        table_per_file = False,
         **kwargs
     ):
         super().__init__(**collect_args(locals()))
@@ -158,6 +161,7 @@ class BirdNetRavenParser(RavenParser):
         label = Column("Species Code", 10),
         table_fnmatch = "*.BirdNET.selection.table.txt",
         segment_type = ConfidenceSegment,
+        table_per_file = True,
         **kwargs
     ):
         super().__init__(**collect_args(locals())) 
@@ -180,6 +184,7 @@ class BirdNetCSVParser(TableParser):
         label = Column("label", 6),
         table_fnmatch = "*.csv",
         segment_type = ConfidenceSegment,
+        table_per_file = True,
         **kwargs
     ):
         super().__init__(**collect_args(locals()))

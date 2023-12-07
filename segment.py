@@ -45,13 +45,18 @@ class Segment(it.Interval):
     
     def centered_pad(self, pad: TimeUnit):
         return Segment(self.tstart - pad, self.tend + pad, self.label)
+    
+    def safe_centered_pad(self, pad: TimeUnit):
+        if self.tstart-pad < 0:
+            return Segment(0, self.tend + pad + (pad - self.tstart))
+        return self.centered_pad(pad)
 
     def centered_pad_to(self, duration: TimeUnit):
-        return self.centered_pad((duration - self.dur)/2)
-
-    def birdnet_pad(self):
-        if self.dur > BIRDNET_AUDIO_DURATION:
+        if self.dur > duration:
             return self
+        return self.safe_centered_pad((duration - self.dur)/2)
+    
+    def birdnet_pad(self):
         return self.centered_pad_to(BIRDNET_AUDIO_DURATION)
 
     def overlapping_time(self, other: 'Segment'):
