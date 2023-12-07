@@ -16,6 +16,7 @@ import pandas as pd
 import numpy as np
 import os
 from units import TimeUnit
+from collections import defaultdict
 
 
 class LabelMapper:
@@ -89,8 +90,19 @@ class Annotations:
 
         self.annotation_label_linenumber = dict()
 
-                if list_rel_paths is not None and rel_path not in list_rel_paths:
-                    break
+
+        if list_rel_paths is not None and rel_path not in list_rel_paths:
+            break
+
+        for table_path in self.tables_paths:
+            for rel_path, segment in zip(self.parser.get_audio_rel_no_ext_paths(table_path, self.tables_dir), 
+                                         self.parser.get_segments(table_path)):
+ 
+                segment.label = ' '.join(re.sub(r'[\\/*?:"<>|]', '', segment.label).lower().split())
+
+                if segment.label not in self.annotation_label_linenumber.keys():
+                    self.annotation_label_linenumber[segment.label] = []
+                self.annotation_label_linenumber[segment.label].append([rel_path, segment.line_number])
 
                 basename = os.path.basename(rel_path)
                 if rel_path in self.audio_files.keys():
@@ -166,9 +178,17 @@ class Annotations:
         logger.print("Input audio folder:", audio_files_dir)
         logger.print("Output audio folder:", export_dir)
 
+
         self.load(logger, **kwargs)
         self.map_labels(**kwargs)
 
+        annotation_label_linenumber_dir = os.path.join(export_dir, "label_filename_linenumber")
+        os.makedirs(annotation_label_linenumber_dir, exist_ok = True)
+        
+        for key, value in self.annotation_label_linenumber.items():
+            annotation_label_linenumber_logger = Logger(logfile_path=os.path.join(annotation_label_linenumber_dir, f"{key}.txt",), log_date=False)
+            for sub_list in value:
+                annotation_label_linenumber_logger.print(f"   {sub_list}")
 
         if not stats_only:
             self.load_audio_paths(audio_files_dir, **kwargs)
@@ -177,8 +197,9 @@ class Annotations:
         proc_logger = ProcLogger(**kwargs)
         logger.print("Found", len(self.audio_files), "audio files.")
 
-        stats_pad = {}
-        stats = {} 
+        stats = defaultdict(lambda: [0, 0])
+        stats_pad = defaultdict(lambda: [0, 0])
+
         for af_wrap in self.audio_files.values():
             if include_path or not af_wrap.unique:
                 # If the filename is not unique (or the user decides to) include  
@@ -190,12 +211,12 @@ class Annotations:
                     af.prefix = f"{'_'.join(splits)}_{af.prefix}"    
             for segment in af_wrap.segments:
                 segment_pad = segment.birdnet_pad()
-                if (label := segment.label) not in stats.keys():           
-                    stats[label] = segment.dur
-                    stats_pad[label] = segment_pad.dur
-                else:
-                    stats[label] += segment.dur
-                    stats_pad[label] += segment_pad.dur
+                label = segment.label
+                stats[label][0] += segment.dur
+                stats[label][1] += 1
+
+                stats_pad[label][0] += segment_pad.dur
+                stats_pad[label][1] += 1
                 
             if not stats_only:
                 af_wrap.audio_file.export_all_birdnet(export_dir, af_wrap.segments, proc_logger=proc_logger, logger=logger, progress_bar=prog_bar, **kwargs)
