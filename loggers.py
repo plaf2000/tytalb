@@ -13,6 +13,7 @@ class ProgressBar():
         self.amount = 0
         self.increment=total/100
         self.text = text
+        self.terminated = False
         self.print(increment=0)
 
     def is_to_update(self, i, verbose):
@@ -20,25 +21,30 @@ class ProgressBar():
                 return verbose and not i%self.increment
     
     def print(self, increment=None):
-                if increment is None:
-                    increment = self.increment
-                self.amount+=increment
-                if self.amount > self.total:
-                    self.amount = self.total
+        if self.terminated:
+            return
+        if increment is None:
+            increment = self.increment
+        self.amount+=increment
+        if self.amount > self.total:
+            self.amount = self.total
 
-                fraction = self.amount / self.total
+        fraction = self.amount / self.total
 
-                arrow = int(fraction * self.bar_length - 1) * '-' + '>'
-                padding = int(self.bar_length - len(arrow)) * ' '
+        arrow = int(fraction * self.bar_length - 1) * '-' + '>'
+        padding = int(self.bar_length - len(arrow)) * ' '
 
-                ending = '\n' if self.amount == self.total else '\r'
+        ending = '\n' if self.amount == self.total else '\r'
 
-                print(f'{self.text}: [{arrow}{padding}] {int(fraction*100)}%', end=ending)
+        print(f'{self.text}: [{arrow}{padding}] {int(fraction*100)}%', end=ending)
 
     def terminate(self):
+        if self.terminated:
+            return
         rest = self.total - self.amount
         if rest > 0:
             self.print(rest)
+        self.terminated = True
 
 class Logger:
     def __init__(self, logfile=None, logfile_path=None, log=True, log_date=True):
