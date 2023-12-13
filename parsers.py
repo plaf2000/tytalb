@@ -254,6 +254,14 @@ class SmartParser:
             parser = ap(**parser_kwargs)
             if parser.valid_format(table_path):
                 return parser
+        for ap in available_parsers:
+            parser = ap(**parser_kwargs)
+            if parser.header:
+                pk = parser_kwargs.copy()
+                del pk["header"]
+                parser = ap(header=False, **pk)
+                if parser.valid_format(table_path):
+                    return parser
         raise ValueError("No parser found.")
     
     def is_table_per_file(self, table_path: str) -> bool:
