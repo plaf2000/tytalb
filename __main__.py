@@ -5,7 +5,6 @@ from loggers import Logger
 from variables import BIRDNET_AUDIO_DURATION, BIRDNET_SAMPLE_RATE
 from argparse import ArgumentParser, BooleanOptionalAction
 from datetime import datetime
-from calls_finder import find_calls, multi_processes
 import pandas as pd
 import numpy as np
 import time
