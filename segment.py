@@ -13,7 +13,9 @@ class Segment(it.Interval):
             label = label.encode()
         if label is None:
             label = b""
-        return super(Segment, cls).__new__(cls, tstart_s, tend_s, bytearray(label))
+        instance = super(Segment, cls).__new__(cls, tstart_s, tend_s, bytearray(label))
+        instance.line_number = line_number
+        return instance
     
     def __deepcopy__(self, memo):
         cls = self.__class__
