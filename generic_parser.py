@@ -19,11 +19,13 @@ class Column:
         try:
             self.colindex = header_row.index(self.colname)
         except ValueError as e:
-            raise ValueError(f"'{self.colname}' not found in the header row: {e}")
+            raise ValueError(f"'{self.colname}' not found in the header row {header_row}: {e}")
     def get_val(self, row: list):
         """
         Given the row's cells as list, return the value of the corresponding column.
         """
+        if len(row) <= self.colindex:
+            raise IndexError(f"Row {row} is too short.")
         return self.read_func(row[self.colindex])
 
     def read_func(self, cell: str):
@@ -83,14 +85,20 @@ class TableParser:
         """
         with open(table_path, encoding='utf-8') as fp:
             csvr = csv.reader(fp, delimiter=self.delimiter)
-            line_number = 0
+            line_offset = 1
             if self.header:
                 theader = next(csvr)
                 self.set_coli(theader)
-                line_number += 1
-            for row in csvr:
-                line_number += 1
-                yield self.get_segment(row, line_number)
+                line_offset = 2
+
+            for i, row in enumerate(csvr):
+                try:
+                    if skip_empty_row and (len(row)==0 or (len(row)==1 and row[0].strip()=='')):
+                        print(f"Warning, empty row {row} skipped")
+                        continue
+                    yield self.get_segment(row, i + line_offset)
+                except ValueError as e:
+                    raise ValueError(f"Exception on row {i}: {e}")
 
     def get_audio_rel_no_ext_path(self, table_path: str, tables_base_path: str):
         table_basename = os.path.basename(table_path)
@@ -130,3 +138,6 @@ class TableParser:
         """
         basename = os.path.basename(table_path)
         return fnmatch.fnmatch(basename, self.table_fnmatch)
+    
+    def is_table_per_file(self, table_path: str) -> bool:
+        return self.table_per_file

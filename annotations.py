@@ -44,12 +44,21 @@ class LabelMapper:
         return label
     
 class SegmentsWrapper:
-    def __init__(self, unique = True, segments: list[Segment] | None  = None, audio_file: AudioFile | None = None):
+    def __init__(self, unique = True, audio_file: AudioFile | None = None, segments: list[Segment] | None  = None):
         if segments is None:
             segments = []
         self.unique = unique
         self.segments: list[Segment] = segments
         self.audio_file: AudioFile | None = audio_file
+    
+    
+    @property
+    def segments_interval_tree(self):
+        if self.segments:
+            return self.segments[0].get_intervaltree(self.segments)
+        else:
+            return Segment.get_intervaltree(self.segments)
+    
         
 
 class Annotations:
@@ -69,7 +78,10 @@ class Annotations:
 
         if recursive_subfolders:
             for dirpath, dirs, files in os.walk(self.tables_dir):
-                for filename in fnmatch.filter(files, self.parser.table_fnmatch):
+                for filename in files:
+                    if not self.parser.is_table(filename):
+                        continue
+
                     fpath = os.path.join(dirpath, filename)
                     self.tables_paths.append(fpath)
         else:
@@ -86,9 +98,15 @@ class Annotations:
         self.audio_files: dict[str, SegmentsWrapper] = dict()
         prog_bar = ProgressBar("Reading tables", len(self.tables_paths))
 
+        for table_path in self.tables_paths:
 
-        self.annotation_label_linenumber = dict()
-
+            if self.parser.is_table_per_file(table_path)\
+               and list_rel_paths is not None\
+               and self.parser.get_audio_rel_no_ext_path(table_path, self.tables_dir) not in list_rel_paths:                
+                continue
+            for rel_path, segment in zip(self.parser.get_audio_rel_no_ext_paths(table_path, self.tables_dir), 
+                                         self.parser.get_segments(table_path)):
+                
                 if list_rel_paths is not None and rel_path not in list_rel_paths:
                     break
 
@@ -217,8 +235,6 @@ class Annotations:
             copy.audio_files[rel_path].segments = [s for s in segs if s.confidence >= confidence_threshold]
         return copy
 
-        
-
 
     def validate(self, other: 'Annotations', *args, **kwargs):
         validate(ground_truth=self, to_validate=other, *args, **kwargs) 
@@ -263,8 +279,6 @@ def validate(
         to_validate.load(list_rel_paths=gt_paths)
         if filter_confidence is not None:
             to_validate = to_validate.filter_confidence(filter_confidence)
-
-
 
     all_rel_paths = set(ground_truth.audio_files.keys()) | set(to_validate.audio_files.keys())
     labels: set[str] = set()
@@ -430,7 +444,7 @@ def validate(
             df_matrix[NOISE_LABEL] = df_matrix[NOISE_LABEL].astype("Int64")
         df_matrix.loc[NOISE_LABEL, NOISE_LABEL] = pd.NA
 
-        df_matrix.index.name = "True\\Prediction"
+        df_matrix.index.name = r"True\Prediction"
         data = {
             "precision": precision,
             "recall": recall,
@@ -448,9 +462,9 @@ def validate(
     return  stats(conf_time_matrix), stats(conf_count_matrix)
 
 def plot_stats(stats: tuple[pd.DataFrame, pd.DataFrame], fout: str):
+    # TODO: Implement this
     conf, metrics = stats
     labels = conf.columns.drop(["Confidence"])
-    print(labels)
 
 
 def plot_both_stats(statss, fouts):

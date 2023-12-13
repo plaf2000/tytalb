@@ -161,4 +161,4 @@ cython_debug/
 
 *.csv
 *.tflite
-*.ipynb
+test.ipynb

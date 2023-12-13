@@ -5,6 +5,7 @@ from loggers import Logger
 from variables import BIRDNET_AUDIO_DURATION, BIRDNET_SAMPLE_RATE
 from argparse import ArgumentParser, BooleanOptionalAction
 from datetime import datetime
+from calls_finder import find_calls, multi_processes
 import pandas as pd
 import numpy as np
 import time
@@ -213,7 +214,7 @@ if __name__ == "__main__":
                                 action=BooleanOptionalAction,
                                 default=True)
     
-    validate_parser.add_argument("-ltv", "--label-settings-gt",
+    validate_parser.add_argument("-lgt", "--label-settings-gt",
                                 dest="gt_label_settings_path",
                                 help="Path to the file used to map and filter labels of the ground truth annotations."\
                                      "Please refer to `README.md`. By default the file is `labels.json` in the root"\
@@ -286,13 +287,42 @@ if __name__ == "__main__":
                                 action=BooleanOptionalAction,
                                 default=True)
 
+    """
+        Parse arguments to find single calls.
+    """
+    calls_parser = subparsers.add_parser("calls", help="Given the birdnet output, find the single calls")
+
+
+    calls_parser.add_argument("-p", "--processes",
+                                dest="n_processes",
+                                help=f"Number of processes. Each processs operate on different files. (default={os.cpu_count()})",
+                                type=int,
+                                default=os.cpu_count())
+    
+    calls_parser.add_argument("-a", "--audio-root-dir",
+                                dest="audio_files_dir",
+                                help="Path to the root directory of the audio files (default=current working dir).", default=".")
+    
+    calls_parser.add_argument("-i", "--input-dir",
+                                dest="tables_dir",
+                                help="Annotations' directory given by BirdNET's analysis (default=current working dir).",
+                                default=".")
+
+    calls_parser.add_argument("-o", "--output-dir",
+                                dest="output_dir",
+                                help=f"Directory where to output the new annotations.",
+                                default=".")
+    
+    calls_parser.add_argument("-c", "--custom-classifier",
+                                dest="custom_classifier",
+                                help=f"Path to the custom classifier to identify the calls.")
     
     args, custom_args = arg_parser.parse_known_args()
 
 
     if args.action == "extract":
         os.makedirs(args.export_dir, exist_ok=True)
-        export_dir =args.export_dir       
+        export_dir = args.export_dir       
         if args.tstamp_outdir:
             export_dir = os.path.join(args.export_dir, datetime.utcnow().strftime("%Y%m%d_%H%M%SUTC"))
             os.mkdir(export_dir)
@@ -416,6 +446,8 @@ if __name__ == "__main__":
                 gt_label_settings_path = gt_label_settings_path
             )
 
+        os.makedirs(args.output_dir, exist_ok=True)
+
         def save_stats(stats: tuple[pd.DataFrame, pd.DataFrame], suffix: str):
             fname = lambda f: os.path.join(args.output_dir, f"{f}_{suffix}.csv")
             df_matrix, df_metrics  = stats
@@ -424,6 +456,13 @@ if __name__ == "__main__":
         
         save_stats(stats_time, "time")
         save_stats(stats_count, "count")
+    elif args.action=="calls":
+        os.makedirs(args.output_dir, exist_ok=True)
+        logger = Logger(logfile_path=os.path.join(args.output_dir, "log.txt"))
+        annotations = Annotations(args.tables_dir, "bnrv")
+        annotations.load()
+        annotations.load_audio_paths(args.audio_files_dir)
+        multi_processes(annotations, args.custom_classifier, args.output_dir, args.n_processes, logger)
 
         
 
