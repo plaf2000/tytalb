@@ -74,9 +74,21 @@ class TableParser:
         """
         Instantiate the `Segment` object by reading the row values.
         """
-        return self.segment_type(
-            *[col.get_val(row) for col in self.columns], line_number
-        )
+        try:
+            return self.segment_type(
+                *[col.get_val(row) for col in self.columns], line_number
+            )
+        except ValueError or IndexError as e:
+            raise ValueError(f"{self.names[0]} parser unable to read row {row}: {e}")
+    
+    def valid_format(self, table_path: str, *args, **kwargs) -> bool:
+        if not self.is_table(table_path):
+            return False
+        try:
+            list(zip(range(2), self.get_segments(table_path)))
+        except ValueError as e:
+            return False
+        return True
 
     def get_segments(self, table_path: str, skip_empty_row=True, *args, **kwargs) -> Generator[Segment, None, None]:
         """

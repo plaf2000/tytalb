@@ -80,11 +80,10 @@ class AudacityParser(TableParser):
         Returns a generator that for each line of the table yields the segment.
         If the table has an header, it first sets the columns using the header.
         """
+
         with open(table_path, encoding='utf-8') as fp:
             csvr = csv.reader(fp, delimiter=self.delimiter)
-            if self.header:
-                theader = next(csvr)
-                self.set_coli(theader)
+            line_offset = 1
             for i, row in enumerate(csvr):
                 try:
                     if skip_empty_row and (len(row)==0 or (len(row)==1 and row[0].strip()=='')):
@@ -93,10 +92,9 @@ class AudacityParser(TableParser):
                     if row[0] == "\\":
                         # Skip the frequency rows.
                         continue
-                    yield self.get_segment(row)
+                    yield self.get_segment(row, line_offset + i)
                 except ValueError as e:
                     raise ValueError(f"Exception on row {i}: {e}")
-
 
 class RavenParser(TableParser): 
     def __init__(self, 
