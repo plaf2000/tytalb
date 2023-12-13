@@ -19,11 +19,13 @@ class Column:
         try:
             self.colindex = header_row.index(self.colname)
         except ValueError as e:
-            raise ValueError(f"'{self.colname}' not found in the header row: {e}")
+            raise ValueError(f"'{self.colname}' not found in the header row {header_row}: {e}")
     def get_val(self, row: list):
         """
         Given the row's cells as list, return the value of the corresponding column.
         """
+        if len(row) <= self.colindex:
+            raise IndexError(f"Row {row} is too short.")
         return self.read_func(row[self.colindex])
 
     def read_func(self, cell: str):
@@ -50,6 +52,9 @@ class TableParser:
     table_fnmatch: str = "*.csv"
     table_per_file: bool = True
 
+
+
+
     def __post_init__(self):
         # `self.columns` lists the columns used for retrieving the segment data (order is relevant!)
         self.columns: list[Column] = [self.tstart, self.tend, self.label]
@@ -72,11 +77,24 @@ class TableParser:
         """
         Instantiate the `Segment` object by reading the row values.
         """
-        return self.segment_type(
-            *[col.get_val(row) for col in self.columns]
-        )
+        try:
+            return self.segment_type(
+                *[col.get_val(row) for col in self.columns]
+            )
+        except ValueError or IndexError as e:
+            raise ValueError(f"{self.names[0]} parser unable to read row {row}: {e}")
 
-    def get_segments(self, table_path: str, *args, **kwargs) -> Generator[Segment, None, None]:
+    
+    def valid_format(self, table_path: str, *args, **kwargs) -> bool:
+        if not self.is_table(table_path):
+            return False
+        try:
+            list(zip(range(2), self.get_segments(table_path)))
+        except ValueError as e:
+            return False
+        return True
+
+    def get_segments(self, table_path: str, skip_empty_row=True, *args, **kwargs) -> Generator[Segment, None, None]:
         """
         Returns a generator that for each line of the table yields the segment.
         If the table has an header, it first sets the columns using the header.
@@ -86,8 +104,14 @@ class TableParser:
             if self.header:
                 theader = next(csvr)
                 self.set_coli(theader)
-            for row in csvr:
-                yield self.get_segment(row)
+            for i, row in enumerate(csvr):
+                try:
+                    if skip_empty_row and (len(row)==0 or (len(row)==1 and row[0].strip()=='')):
+                        print(f"Warning, empty row {row} skipped")
+                        continue
+                    yield self.get_segment(row)
+                except ValueError as e:
+                    raise ValueError(f"Exception on row {i}: {e}")
 
     def get_audio_rel_no_ext_path(self, table_path: str, tables_base_path: str):
         table_basename = os.path.basename(table_path)
@@ -127,3 +151,6 @@ class TableParser:
         """
         basename = os.path.basename(table_path)
         return fnmatch.fnmatch(basename, self.table_fnmatch)
+    
+    def is_table_per_file(self, table_path: str) -> bool:
+        return self.table_per_file

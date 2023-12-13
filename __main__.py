@@ -439,6 +439,8 @@ if __name__ == "__main__":
                 gt_label_settings_path = gt_label_settings_path
             )
 
+        os.makedirs(args.output_dir, exist_ok=True)
+
         def save_stats(stats: tuple[pd.DataFrame, pd.DataFrame], suffix: str):
             fname = lambda f: os.path.join(args.output_dir, f"{f}_{suffix}.csv")
             df_matrix, df_metrics  = stats

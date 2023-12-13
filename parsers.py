@@ -1,3 +1,6 @@
+from typing import Callable
+
+from pyparsing import Generator
 from generic_parser import TableParser, Column, FloatColumn
 from segment import durSegment, Segment, ConfidenceSegment
 from audio_file import AudioFile
@@ -72,6 +75,27 @@ class AudacityParser(TableParser):
     ):
         super().__init__(**collect_args(locals())) 
 
+    def get_segments(self, table_path: str, skip_empty_row=True, *args, **kwargs) -> Generator[Segment, None, None]:
+        """
+        Returns a generator that for each line of the table yields the segment.
+        If the table has an header, it first sets the columns using the header.
+        """
+        with open(table_path, encoding='utf-8') as fp:
+            csvr = csv.reader(fp, delimiter=self.delimiter)
+            if self.header:
+                theader = next(csvr)
+                self.set_coli(theader)
+            for i, row in enumerate(csvr):
+                try:
+                    if skip_empty_row and (len(row)==0 or (len(row)==1 and row[0].strip()=='')):
+                        print(f"Warning, empty row {row} skipped")
+                        continue
+                    if row[0] == "\\":
+                        # Skip the frequency rows.
+                        continue
+                    yield self.get_segment(row)
+                except ValueError as e:
+                    raise ValueError(f"Exception on row {i}: {e}")
 
 
 class RavenParser(TableParser): 
@@ -81,7 +105,7 @@ class RavenParser(TableParser):
         tstart = FloatColumn("Begin Time (s)", 3),
         tend = FloatColumn("End Time (s)", 4),
         label = Column("Annotation", 10),
-        table_fnmatch = "*.selections.txt",
+        table_fnmatch = "*.txt",
         segment_type = Segment,
         table_per_file = True,
         **kwargs
@@ -192,8 +216,7 @@ class BirdNetCSVParser(TableParser):
         self.columns: list[Column] = [self.tstart, self.tend, self.label, self.confidence]
         self.all_columns.append(self.confidence)
 
-
-available_parsers = [
+available_parsers: list[Callable[[], TableParser]] = [
     SonicParser,
     AudacityParser,
     RavenParser,
@@ -202,15 +225,53 @@ available_parsers = [
 ]
 
 
-ap_names = []
+ap_names = ["any"]
 for ap in available_parsers:
     ap_names += ap().names
 
+
+class SmartParser:
+    def is_table(self, table_path: str, **parser_kwargs):
+        for ap in available_parsers:
+            parser = ap(**parser_kwargs)
+            if parser.is_table(table_path):
+                return True
+        return False
+
+    def get_segments(self, table_path: str, *args, **kwargs):
+        parser = self.get_parser(table_path)
+        return parser.get_segments(table_path, *args, **kwargs)
+
+    def get_audio_rel_no_ext_paths(self, table_path: str, *args, **kwargs):
+        parser = self.get_parser(table_path)
+        return parser.get_audio_rel_no_ext_paths(table_path, *args, **kwargs)
+
+    def get_parser(self, table_path: str, **parser_kwargs) -> TableParser:
+        for ap in available_parsers:
+            parser = ap(**parser_kwargs)
+            if parser.valid_format(table_path):
+                return parser
+        raise ValueError("No parser found.")
+    
+    def is_table_per_file(self, table_path: str) -> bool:
+        parser = self.get_parser(table_path)
+        return parser.table_per_file
+
+
+
 def get_parser(table_format: str, **parser_kwargs):
     table_format_name = table_format.lower()
+    if table_format_name == "any":
+        return SmartParser()
     table_parser: TableParser = None
     for tp in available_parsers:
         tp_init: TableParser = tp(**parser_kwargs)
         if table_format_name in tp_init.names:
             table_parser = tp_init
     return table_parser
+
+
+
+
+
+        

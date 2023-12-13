@@ -76,7 +76,10 @@ class Annotations:
 
         if recursive_subfolders:
             for dirpath, dirs, files in os.walk(self.tables_dir):
-                for filename in fnmatch.filter(files, self.parser.table_fnmatch):
+                for filename in files:
+                    if not self.parser.is_table(filename):
+                        continue
+
                     fpath = os.path.join(dirpath, filename)
                     self.tables_paths.append(fpath)
         else:
@@ -94,12 +97,14 @@ class Annotations:
         prog_bar = ProgressBar("Reading tables", len(self.tables_paths))
 
         for table_path in self.tables_paths:
-            if self.parser.table_per_file\
+
+            if self.parser.is_table_per_file(table_path)\
                and list_rel_paths is not None\
-               and self.parser.get_audio_rel_no_ext_path(table_path, self.tables_dir) not in list_rel_paths:
+               and self.parser.get_audio_rel_no_ext_path(table_path, self.tables_dir) not in list_rel_paths:                
                 continue
             for rel_path, segment in zip(self.parser.get_audio_rel_no_ext_paths(table_path, self.tables_dir), 
                                          self.parser.get_segments(table_path)):
+                
                 if list_rel_paths is not None and rel_path not in list_rel_paths:
                     break
                 basename = os.path.basename(rel_path)
@@ -270,8 +275,6 @@ def validate(
         if filter_confidence is not None:
             to_validate = to_validate.filter_confidence(filter_confidence)
 
-
-
     all_rel_paths = set(ground_truth.audio_files.keys()) | set(to_validate.audio_files.keys())
     labels: set[str] = set()
     overlapping_threshold = TimeUnit(overlapping_threshold_s)
@@ -436,7 +439,7 @@ def validate(
             df_matrix[NOISE_LABEL] = df_matrix[NOISE_LABEL].astype("Int64")
         df_matrix.loc[NOISE_LABEL, NOISE_LABEL] = pd.NA
 
-        df_matrix.index.name = "True\\Prediction"
+        df_matrix.index.name = r"True\Prediction"
         data = {
             "precision": precision,
             "recall": recall,
