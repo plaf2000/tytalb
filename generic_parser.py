@@ -78,7 +78,7 @@ class TableParser:
             *[col.get_val(row) for col in self.columns], line_number
         )
 
-    def get_segments(self, table_path: str, *args, **kwargs) -> Generator[Segment, None, None]:
+    def get_segments(self, table_path: str, skip_empty_row=True, *args, **kwargs) -> Generator[Segment, None, None]:
         """
         Returns a generator that for each line of the table yields the segment.
         If the table has an header, it first sets the columns using the header.
