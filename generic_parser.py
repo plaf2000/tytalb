@@ -52,9 +52,6 @@ class TableParser:
     table_fnmatch: str = "*.csv"
     table_per_file: bool = True
 
-
-
-
     def __post_init__(self):
         # `self.columns` lists the columns used for retrieving the segment data (order is relevant!)
         self.columns: list[Column] = [self.tstart, self.tend, self.label]
