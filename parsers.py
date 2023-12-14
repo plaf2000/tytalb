@@ -4,9 +4,10 @@ from loggers import Logger
 from pyparsing import Generator
 from generic_parser import TableParser, Column, FloatColumn
 from segment import durSegment, Segment, ConfidenceSegment
-from audio_file import AudioFile
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from annotations import LabelMapper
 from inspect import signature
-import csv
 import os 
 
 """

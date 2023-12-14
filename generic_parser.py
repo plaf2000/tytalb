@@ -1,9 +1,11 @@
 import fnmatch
-from io import TextIOWrapper
 import os
 import csv
-from typing import Generator, IO, Callable, Any
+from typing import Generator
 import warnings
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from annotations import LabelMapper
 
 from pyparsing import Iterable
 from loggers import Logger
