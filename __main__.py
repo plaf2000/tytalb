@@ -18,7 +18,10 @@ def default_label_settings(label_settings_path, tables_dir):
         label_settings_path = os.path.join(tables_dir, "labels.json")
     return label_settings_path
     
-
+def default_correction_label_settings(label_settings_path, tables_dir):
+    if label_settings_path is None:
+        label_settings_path = os.path.join(tables_dir, "correct_labels.json")
+    return label_settings_path
 
 
 
@@ -54,8 +57,10 @@ if __name__ == "__main__":
     extract_parser.add_argument("-f", "--annotation-format",
                                 dest="table_format",
                                 choices=ap_names,
-                                required=True,
-                                help="Annotation format.")
+                                required=False,
+                                default="any",
+                                help="Annotation format (default=\"any\").")
+
     
     extract_parser.add_argument("--header",
                                 dest="header",
@@ -160,6 +165,50 @@ if __name__ == "__main__":
     #                             action=BooleanOptionalAction,
     #                             default=False)
 
+    """
+        Parse arguments to correct annotations.
+    """
+
+    correct_parser = subparsers.add_parser("correct",
+                                           help="Correct the labels based on the mapping in a json file.")
+    
+    correct_parser.add_argument("-i", "--input-dir",
+                                dest="tables_dir",
+                                help="Path to the folder of the (manual) annotations.",
+                                default=".")
+
+    correct_parser.add_argument("-re", "--recursive",
+                                type=bool,
+                                dest="recursive",
+                                help="Wether to look for tables inside the root directory recursively or not (default=True).",
+                                default=True,
+                                action=BooleanOptionalAction)
+    
+    correct_parser.add_argument("-f", "--annotation-format",
+                                dest="table_format",
+                                choices=ap_names,
+                                required=False,
+                                default="any",
+                                help="Annotation format (default=\"any\").")
+    
+    correct_parser.add_argument("--header",
+                                dest="header",
+                                help="Whether the annotation tables have an header. The default value is defined "\
+                                     "by the annotations parser.",
+                                action=BooleanOptionalAction)
+    
+    correct_parser.add_argument("-o", "--output-dir",
+                                dest="output_dir",
+                                help="Path to the output directory. If doesn't exist, it will be created (default=<input_dir>_corrected).",
+                                default=None)
+    
+    correct_parser.add_argument("-l", "--label-settings",
+                                dest="label_settings_path",
+                                help="Path to the file used to map labels to correct ones. Please refer to `README.md`. "\
+                                     "By default the file is `correct_labels.json` in the root directory of annotations.",
+                                type=str,
+                                default=None)
+
     
     """
         Parse arguments to train the model.
@@ -185,9 +234,9 @@ if __name__ == "__main__":
                                 default=".")
     
     validate_parser.add_argument("-tv", "--to-validate",
-                            dest="tables_dir_tv",
-                            help="Path to the folder of the annotations to validate (default=current working dir).",
-                            default=".")
+                                dest="tables_dir_tv",
+                                help="Path to the folder of the annotations to validate (default=current working dir).",
+                                default=".")
     
     validate_parser.add_argument("-fgt", "--annotation-format-ground-truth",
                                 dest="table_format_gt",
@@ -292,7 +341,7 @@ if __name__ == "__main__":
 
     if args.action == "extract":
         os.makedirs(args.export_dir, exist_ok=True)
-        export_dir =args.export_dir       
+        export_dir = args.export_dir       
         if args.tstamp_outdir:
             export_dir = os.path.join(args.export_dir, datetime.utcnow().strftime("%Y%m%d_%H%M%SUTC"))
             os.mkdir(export_dir)
@@ -348,7 +397,31 @@ if __name__ == "__main__":
             print(f"Check {logger.logfile_path} for more information.")
             logger.print_exception(e)  
 
+    elif args.action == "correct":
+        logger = Logger()
 
+        out_dir: str = args.output_dir 
+        if out_dir is None:
+            out_dir: str = args.tables_dir
+            while out_dir.endswith(os.sep):
+                out_dir[:-1]            
+            out_dir = f"{out_dir}_corrected"
+        os.makedirs(out_dir, exist_ok=True)
+        try:
+            annots = Annotations(
+                tables_dir=args.tables_dir,
+                table_format=args.table_format,
+                recursive_subfolders=args.recursive,
+                logger=logger,
+            )
+            label_settings_path =  default_correction_label_settings(args.label_settings_path, args.tables_dir)
+            annots.correct_labels(out_dir,label_settings_path)
+        except Exception as e:
+            print()
+            print("An error occured and the operation was not completed!")
+            print(f"Check {logger.logfile_path} for more information.")
+            logger.print_exception(e)  
+            
     elif args.action == "train":
         subprocess.run(["python", "train.py"] + custom_args, cwd="BirdNET-Analyzer/")
     elif args.action=="validate":
@@ -416,6 +489,8 @@ if __name__ == "__main__":
                 gt_label_settings_path = gt_label_settings_path
             )
 
+        os.makedirs(args.output_dir, exist_ok=True)
+
         def save_stats(stats: tuple[pd.DataFrame, pd.DataFrame], suffix: str):
             fname = lambda f: os.path.join(args.output_dir, f"{f}_{suffix}.csv")
             df_matrix, df_metrics  = stats
@@ -424,8 +499,6 @@ if __name__ == "__main__":
         
         save_stats(stats_time, "time")
         save_stats(stats_count, "count")
-
-        
 
 
     
