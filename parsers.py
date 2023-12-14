@@ -1,3 +1,4 @@
+import warnings
 from typing import Callable
 from loggers import Logger
 from pyparsing import Generator
@@ -82,12 +83,12 @@ class AudacityParser(TableParser):
         """
 
         with open(table_path, encoding='utf-8') as fp:
-            csvr = csv.reader(fp, delimiter=self.delimiter)
+            csvr = self.csv_reader(fp, delimiter=self.delimiter)
             line_offset = 1
             for i, row in enumerate(csvr):
                 try:
                     if skip_empty_row and (len(row)==0 or (len(row)==1 and row[0].strip()=='')):
-                        logger.print(f"Warning: empty row {row} skipped ({table_path}, {i+line_offset})")
+                        warnings.warn(f"Warning: empty row {row} skipped ({table_path}, line {i+line_offset})")
                         continue
                     if row[0] == "\\":
                         # Skip the frequency rows.
@@ -113,7 +114,7 @@ class RavenParser(TableParser):
     def get_segments(self, table_path: str, *args, **kwargs):
         seen_segments = set()
         with open(table_path, encoding='utf-8') as fp:
-            csvr = csv.reader(fp, delimiter=self.delimiter)
+            csvr = self.csv_reader(fp, delimiter=self.delimiter)
             line_number = 0
             if self.header:
                 theader = next(csvr)
@@ -152,7 +153,7 @@ class KaleidoscopeParser(TableParser):
 
     def get_audio_rel_no_ext_paths(self, table_path: str, tables_base_path: str):
         with open(table_path, encoding='utf-8') as fp:
-            csvr = csv.reader(fp, delimiter=self.delimiter)
+            csvr = self.csv_reader(fp)
             if self.header:
                 theader = next(csvr)
                 self.set_coli(theader)
@@ -240,11 +241,11 @@ class SmartParser:
         return False
 
     def get_segments(self, table_path: str, *args, **kwargs):
-        parser = self.get_parser(table_path)
+        parser = self.get_parser(table_path, **kwargs)
         return parser.get_segments(table_path, *args, **kwargs)
 
     def get_audio_rel_no_ext_paths(self, table_path: str, *args, **kwargs):
-        parser = self.get_parser(table_path)
+        parser = self.get_parser(table_path, **kwargs)
         return parser.get_audio_rel_no_ext_paths(table_path, *args, **kwargs)
 
     def get_parser(self, table_path: str, **parser_kwargs) -> TableParser:
@@ -262,9 +263,13 @@ class SmartParser:
                     return parser
         raise ValueError("No parser found.")
     
-    def is_table_per_file(self, table_path: str) -> bool:
-        parser = self.get_parser(table_path)
+    def is_table_per_file(self, table_path: str, **parser_kwargs) -> bool:
+        parser = self.get_parser(table_path, **parser_kwargs)
         return parser.table_per_file
+    
+    def edit_label(self, table_path: str, **parser_kwargs):
+        self.get_parser(table_path, **parser_kwargs).edit_label(table_path)
+
 
 
 

@@ -1,7 +1,11 @@
 import fnmatch
+from io import TextIOWrapper
 import os
 import csv
 from typing import Generator, IO, Callable, Any
+
+from pyparsing import Iterable
+from annotations import LabelMapper
 from loggers import Logger
 from dataclasses import dataclass
 from segment import Segment
@@ -21,13 +25,23 @@ class Column:
             self.colindex = header_row.index(self.colname)
         except ValueError as e:
             raise ValueError(f"'{self.colname}' not found in the header row {header_row}: {e}")
-    def get_val(self, row: list):
+        
+
+    def get_val(self, row: list[str]):
         """
         Given the row's cells as list, return the value of the corresponding column.
         """
         if len(row) <= self.colindex:
             raise IndexError(f"Row {row} is too short.")
         return self.read_func(row[self.colindex])
+    
+    def set_val(self, val, row: list[str]):
+        """
+        Given the row's cells as list, set the value of the corresponding column to `val`.
+        """
+        if len(row) <= self.colindex:
+            raise IndexError(f"Row {row} is too short.")
+        row[self.colindex] = str(val)
 
     def read_func(self, cell: str):
         return cell
@@ -62,6 +76,15 @@ class TableParser:
         # Dictionary mapping from paths to `AudioFile` objects contained in the segment table
         # (usually, only one).
         self.all_audio_files: dict[str, AudioFile] = {}
+        self.name = self.__class__.__name__
+        csv.register_dialect(self.name, delimiter=self.delimiter)
+    
+    
+    def csv_reader(self, fp: Iterable[str]) -> csv._reader:
+        return csv.reader(fp, csv.get_dialect(self.name))
+
+    def csv_writer(self, fp: Iterable[str]) -> csv._writer:
+        return csv.writer(fp, csv.get_dialect(self.name))
 
     def set_coli(self, *args, **kwargs):
         """
@@ -97,7 +120,7 @@ class TableParser:
         If the table has an header, it first sets the columns using the header.
         """
         with open(table_path, encoding='utf-8') as fp:
-            csvr = csv.reader(fp, delimiter=self.delimiter)
+            csvr = self.csv_reader(fp)
             line_offset = 1
             if self.header:
                 theader = next(csvr)
@@ -140,7 +163,7 @@ class TableParser:
         """
         audio_rel_no_ext_paths = self.get_audio_rel_no_ext_path(table_path, tables_base_path)
         with open(table_path, encoding='utf-8') as fp:
-            csvr = csv.reader(fp, delimiter=self.delimiter)
+            csvr = self.csv_reader(fp)
             for _ in csvr:
                 yield audio_rel_no_ext_paths
 
@@ -154,3 +177,28 @@ class TableParser:
     
     def is_table_per_file(self, table_path: str) -> bool:
         return self.table_per_file
+    
+    def edit_label(self, table_path: str, label_mapper: LabelMapper, new_table_path: str = None):
+        rows = []
+        with open(table_path) as fp:
+            csvr = self.csv_reader(fp)
+            for row in csvr:
+                old_label = self.label.get_val(row)
+                new_label = label_mapper.map(old_label)
+                new_row = self.label.set_val(new_label)
+                rows.append(new_row)
+
+        if new_table_path is None:
+            # By default overwrite (dangerous!)
+            new_table_path = table_path
+
+        with open(new_table_path, "w+", newline='') as fp:
+            csvw = self.csv_writer(fp)
+            for new_row in rows:
+                csvw.writerow(new_row)
+ 
+        
+                
+                
+
+

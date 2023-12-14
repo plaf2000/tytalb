@@ -79,7 +79,7 @@ options:
                         be done automatically.
 ```
 
-the `-l` or `--label-settings` allow to easily manage different labels without the need to delete or rename folders.
+the `-l` or `--label-settings` allow to easily manage different labels without the need to delete or rename folders or move their contents.
 You can use the `"map"` attribute to map the labels you have inside the provided tables to new labels.
 For example
 ```json
@@ -125,6 +125,19 @@ will ignore all labels matching `r"tyt\w*"`.
 will instead consider all the other labels as noise.
 
 Whitelist have precedence over blacklist.
+
+Furthermore, please note that by default labels get automatically cleaned from whitespaces repetitions and leading and ending whitespaces using the `strip()` Python method. This is to fix common typos. To avoid this behaviour, you can set the `strip` attribute to `false` in the json settings:
+
+```json
+{
+    "strip": false,    
+    "map": {
+        "tyt\\w*": "Tyto"
+    },
+    "whitelist": ["Tyto"]
+}
+```
+The strip occours before any other operation, i.e. the order is `strip -> map -> black/white list`.
 
 ## Validate
 

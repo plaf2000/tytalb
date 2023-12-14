@@ -6,8 +6,7 @@ from segment import Segment
 import json
 import fnmatch
 import re
-from loggers import Logger 
-import shutil
+from loggers import Logger
 from parsers import get_parser
 from loggers import ProcLogger, Logger, ProgressBar 
 from stats import calculate_and_save_stats
@@ -29,11 +28,21 @@ class LabelMapper:
         self.map_dict: dict = {} if not "map" in self.json_obj else self.json_obj["map"]
         self.whitelist = None if not "whitelist" in self.json_obj else self.json_obj["whitelist"]
         self.blacklist = None if not "blacklist" in self.json_obj else self.json_obj["blacklist"]
+        self.strip = True if not "strip" in self.json_obj else self.json_obj["strip"]
+        self.single_ws = True if not "single white space" in self.json_obj else self.json_obj["single white space"]
     
     def black_listed(self, label: str) -> bool:
         if self.whitelist:
             return label not in self.whitelist
         return label in self.blacklist if self.blacklist else False
+    
+    def clean(self, label: str) -> str:
+        if self.strip:
+            label = label.strip()
+        if self.single_ws:
+            label = " ".join(label.split())
+        
+        return label
     
     def map(self, label: str) -> str:
         for k, v in self.map_dict.items():
@@ -268,6 +277,7 @@ def validate(
         late_start = False,
         early_stop = False,
         skip_missing_gt = True,
+        logger: Logger = Logger(log=False),
         **kwargs
         ):
     """
@@ -297,13 +307,13 @@ def validate(
         to_validate.load(list_rel_paths=gt_paths)
         if filter_confidence is not None:
             to_validate = to_validate.filter_confidence(filter_confidence)
+        
+    if not ground_truth.audio_files:
+        raise ValueError("No ground truth annotations found.")
 
     all_rel_paths = set(ground_truth.audio_files.keys()) | set(to_validate.audio_files.keys())
     labels: set[str] = set()
     overlapping_threshold = TimeUnit(overlapping_threshold_s)
-
-
-
 
 
     # Union the labels in ground truth and set to validate
@@ -311,8 +321,6 @@ def validate(
         for af_wrapper in bnt.audio_files.values():
             for seg in af_wrapper.segments:
                 labels.add(seg.label)
-
-
     
     labels.add(NOISE_LABEL)
     labels = sorted(labels)
@@ -374,6 +382,7 @@ def validate(
         # If there are no labels in the ground truth, there are only FP
         # Unless skip_missing_gt is True
         if not rel_path in ground_truth.audio_files:
+            warnings.warn(f"{rel_path} not found in ground truth annotations.")
             for seg in af_tv.segments:
                 if seg.label != NOISE_LABEL:
                     set_both(NOISE_LABEL, seg.label, seg.dur)
@@ -381,6 +390,8 @@ def validate(
         
         # If there are no labels in the validation, there are only FN
         if not rel_path in to_validate.audio_files:
+            warnings.warn(f"{rel_path} not found in annotations to validate.")
+
             for seg in af_gt.segments:
                 if seg.label != NOISE_LABEL:
                     set_both(seg.label, NOISE_LABEL, seg.dur)
@@ -391,7 +402,7 @@ def validate(
 
         def interval_tree(af: SegmentsWrapper):
             # If late_start and early_stop, restrict the interval
-            return Segment.get_intervaltree([s for s in af.segments if s.label!=NOISE_LABEL 
+            return Segment.get_intervaltree([s for s in af.segments if s.label != NOISE_LABEL 
                                              and (not late_start or s.tend >= min_tstart)
                                              and (not early_stop or s.tstart <= max_tend)])
         
