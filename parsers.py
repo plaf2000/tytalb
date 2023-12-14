@@ -83,7 +83,7 @@ class AudacityParser(TableParser):
         """
 
         with open(table_path, encoding='utf-8') as fp:
-            csvr = self.csv_reader(fp, delimiter=self.delimiter)
+            csvr = self.csv_reader(fp)
             line_offset = 1
             for i, row in enumerate(csvr):
                 try:
@@ -114,7 +114,7 @@ class RavenParser(TableParser):
     def get_segments(self, table_path: str, *args, **kwargs):
         seen_segments = set()
         with open(table_path, encoding='utf-8') as fp:
-            csvr = self.csv_reader(fp, delimiter=self.delimiter)
+            csvr = self.csv_reader(fp)
             line_number = 0
             if self.header:
                 theader = next(csvr)
@@ -256,19 +256,17 @@ class SmartParser:
         for ap in available_parsers:
             parser = ap(**parser_kwargs)
             if parser.header:
-                pk = parser_kwargs.copy()
-                del pk["header"]
-                parser = ap(header=False, **pk)
+                parser.header = False
                 if parser.valid_format(table_path):
                     return parser
-        raise ValueError("No parser found.")
+        raise ValueError(f"No parser found for file {table_path}.")
     
     def is_table_per_file(self, table_path: str, **parser_kwargs) -> bool:
         parser = self.get_parser(table_path, **parser_kwargs)
         return parser.table_per_file
     
-    def edit_label(self, table_path: str, **parser_kwargs):
-        self.get_parser(table_path, **parser_kwargs).edit_label(table_path)
+    def edit_label(self, table_path: str, label_mapper: 'LabelMapper', skip_empty_row=True, new_table_path: str = None, **parser_kwargs):
+        self.get_parser(table_path, **parser_kwargs).edit_label(table_path, label_mapper, skip_empty_row, new_table_path)
 
 
 

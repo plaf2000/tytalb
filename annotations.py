@@ -26,10 +26,12 @@ class LabelMapper:
         except:
             self.json_obj = {}
         self.map_dict: dict = {} if not "map" in self.json_obj else self.json_obj["map"]
+        self.sub_dict: dict = {} if not "sub" in self.json_obj else self.json_obj["sub"]
         self.whitelist = None if not "whitelist" in self.json_obj else self.json_obj["whitelist"]
         self.blacklist = None if not "blacklist" in self.json_obj else self.json_obj["blacklist"]
         self.strip = True if not "strip" in self.json_obj else self.json_obj["strip"]
         self.single_ws = True if not "single white space" in self.json_obj else self.json_obj["single white space"]
+        self.lowercase = False if not "lower" in self.json_obj else self.json_obj["lower"]
     
     def black_listed(self, label: str) -> bool:
         if self.whitelist:
@@ -41,7 +43,8 @@ class LabelMapper:
             label = label.strip()
         if self.single_ws:
             label = " ".join(label.split())
-        
+        if self.lowercase:
+            label = label.lower()
         return label
     
     def map(self, label: str) -> str:
@@ -52,6 +55,16 @@ class LabelMapper:
         if self.black_listed(label):
             label = "Noise"
         return label
+    
+    def sub(self, label: str) -> str:
+        for k, v in self.sub_dict.items():
+            label = re.sub(k, v, label)
+        return label
+    
+    def do_all(self, label: str) -> str:
+        return self.map(self.sub(self.clean(label)))
+
+    
     
 class SegmentsWrapper:
     def __init__(self, unique = True, audio_file: AudioFile | None = None, segments: list[Segment] | None  = None):
@@ -122,11 +135,11 @@ class Annotations:
                 if list_rel_paths is not None and rel_path not in list_rel_paths:
                     continue
  
-                segment.label = ' '.join(re.sub(r'[\\/*?:"<>|]', '', segment.label).lower().split())
+                path_safe_label = ' '.join(re.sub(r'[\\/*?:"<>|]', '', segment.label).split())
 
-                if segment.label not in self.annotation_label_linenumber.keys():
-                    self.annotation_label_linenumber[segment.label] = []
-                self.annotation_label_linenumber[segment.label].append([rel_path, segment.line_number])
+                if path_safe_label not in self.annotation_label_linenumber.keys():
+                    self.annotation_label_linenumber[path_safe_label] = []
+                self.annotation_label_linenumber[path_safe_label].append([rel_path, segment.line_number])
 
                 basename = os.path.basename(rel_path)
                 if rel_path in self.audio_files.keys():
@@ -154,8 +167,18 @@ class Annotations:
             label_mapper = LabelMapper(label_settings_path)
             for af_wrap in self.audio_files.values():
                 for seg in af_wrap.segments:
-                    seg.label = label_mapper.map(seg.label)
+                    seg.label = label_mapper.do_all(seg.label)
                     prog_bar.print(1)
+            prog_bar.terminate()
+    
+    def correct_labels(self, out_dir: str, label_settings_path=None,  **kwargs):
+        if label_settings_path is not None and os.path.isfile(label_settings_path):
+            prog_bar = ProgressBar("Correcting labels", len(self.tables_paths))
+            label_mapper = LabelMapper(label_settings_path)
+            for table_path in self.tables_paths:
+                out_path = os.path.join(out_dir, os.path.relpath(table_path, self.tables_dir))
+                self.parser.edit_label(table_path, label_mapper, new_table_path=out_path)
+                prog_bar.print(1)
             prog_bar.terminate()
     
     def load_audio_paths(self, audio_files_dir: str, **kwargs):

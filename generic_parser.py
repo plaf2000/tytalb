@@ -3,9 +3,9 @@ from io import TextIOWrapper
 import os
 import csv
 from typing import Generator, IO, Callable, Any
+import warnings
 
 from pyparsing import Iterable
-from annotations import LabelMapper
 from loggers import Logger
 from dataclasses import dataclass
 from segment import Segment
@@ -42,6 +42,7 @@ class Column:
         if len(row) <= self.colindex:
             raise IndexError(f"Row {row} is too short.")
         row[self.colindex] = str(val)
+        return row
 
     def read_func(self, cell: str):
         return cell
@@ -76,14 +77,15 @@ class TableParser:
         # Dictionary mapping from paths to `AudioFile` objects contained in the segment table
         # (usually, only one).
         self.all_audio_files: dict[str, AudioFile] = {}
+        self.line_offset = 2 if self.header else 1
         self.name = self.__class__.__name__
         csv.register_dialect(self.name, delimiter=self.delimiter)
     
     
-    def csv_reader(self, fp: Iterable[str]) -> csv._reader:
+    def csv_reader(self, fp: Iterable[str]) -> csv.reader:
         return csv.reader(fp, csv.get_dialect(self.name))
 
-    def csv_writer(self, fp: Iterable[str]) -> csv._writer:
+    def csv_writer(self, fp: Iterable[str]) -> csv.reader:
         return csv.writer(fp, csv.get_dialect(self.name))
 
     def set_coli(self, *args, **kwargs):
@@ -114,37 +116,32 @@ class TableParser:
             return False
         return True
 
-    def get_segments(self, table_path: str, skip_empty_row=True, logger: Logger = Logger(), *args, **kwargs) -> Generator[Segment, None, None]:
+    def get_segments(self, table_path: str, skip_empty_row=True, *args, **kwargs) -> Generator[Segment, None, None]:
         """
         Returns a generator that for each line of the table yields the segment.
         If the table has an header, it first sets the columns using the header.
         """
         with open(table_path, encoding='utf-8') as fp:
             csvr = self.csv_reader(fp)
-            line_offset = 1
             if self.header:
                 theader = next(csvr)
                 self.set_coli(theader)
-                line_offset = 2
+                
 
             for i, row in enumerate(csvr):
+                line_i = i + self.line_offset
                 try:
                     if skip_empty_row and (len(row)==0 or (len(row)==1 and row[0].strip()=='')):
-                        logger.print(f"Warning: empty row {row} skipped ({table_path}, {i+line_offset})")
+                        warnings.warn(f"Empty row {row} skipped ({table_path}, {line_i})")
                         continue
-                    yield self.get_segment(row, i + line_offset)
+                    yield self.get_segment(row, line_i)
                 except ValueError as e:
-                    raise ValueError(f"Exception on row {i}: {e}")
+                    raise ValueError(f"ValueError on row {i}: {e}")
 
     def get_audio_rel_no_ext_path(self, table_path: str, tables_base_path: str):
         table_basename = os.path.basename(table_path)
-        table_subpath = os.path.dirname(table_path)
-        table_subpath = table_subpath[len(tables_base_path):]
-        
-        while table_subpath.startswith(os.sep):
-            table_subpath = table_subpath[1:]
+        table_subpath  = os.path.relpath(table_path, tables_base_path)
         audio_rel_no_ext_paths = os.path.join(table_subpath, table_basename.split(".")[0])
-
         return audio_rel_no_ext_paths
 
     def get_audio_rel_no_ext_paths(self, table_path: str, tables_base_path: str):
@@ -178,15 +175,26 @@ class TableParser:
     def is_table_per_file(self, table_path: str) -> bool:
         return self.table_per_file
     
-    def edit_label(self, table_path: str, label_mapper: LabelMapper, new_table_path: str = None):
+    def edit_label(self, table_path: str, label_mapper: 'LabelMapper', skip_empty_row=True, new_table_path: str = None):
         rows = []
         with open(table_path) as fp:
             csvr = self.csv_reader(fp)
-            for row in csvr:
-                old_label = self.label.get_val(row)
-                new_label = label_mapper.map(old_label)
-                new_row = self.label.set_val(new_label)
-                rows.append(new_row)
+            if self.header:
+                theader = next(csvr)
+                self.set_coli(theader)
+                rows.append(theader)
+            for i, row in enumerate(csvr):
+                line_i = i + self.line_offset
+                try:
+                    if skip_empty_row and (len(row)==0 or (len(row)==1 and row[0].strip()=='')):
+                        warnings.warn(f"Empty row {row} skipped ({table_path}, {line_i})")
+                        continue
+                    old_label = self.label.get_val(row)
+                    new_label = label_mapper.do_all(old_label)
+                    new_row = self.label.set_val(new_label, row)
+                    rows.append(new_row)
+                except ValueError as e:
+                    raise ValueError(f"ValueError on row {line_i}: {e}")
 
         if new_table_path is None:
             # By default overwrite (dangerous!)

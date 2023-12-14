@@ -126,7 +126,7 @@ will instead consider all the other labels as noise.
 
 Whitelist have precedence over blacklist.
 
-Furthermore, please note that by default labels get automatically cleaned from whitespaces repetitions and leading and ending whitespaces using the `strip()` Python method. This is to fix common typos. To avoid this behaviour, you can set the `strip` attribute to `false` in the json settings:
+Furthermore, please note that by default labels get automatically cleaned from leading and ending whitespaces using the `strip()` Python method. This is to fix common typos. To avoid this behaviour, you can set the `strip` attribute to `false` in the json settings:
 
 ```json
 {
