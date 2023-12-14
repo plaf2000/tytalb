@@ -2,6 +2,7 @@ import fnmatch
 import os
 import csv
 from typing import Generator, IO, Callable, Any
+from loggers import Logger
 from dataclasses import dataclass
 from segment import Segment
 from audio_file import AudioFile
@@ -90,7 +91,7 @@ class TableParser:
             return False
         return True
 
-    def get_segments(self, table_path: str, skip_empty_row=True, *args, **kwargs) -> Generator[Segment, None, None]:
+    def get_segments(self, table_path: str, skip_empty_row=True, logger: Logger = Logger(), *args, **kwargs) -> Generator[Segment, None, None]:
         """
         Returns a generator that for each line of the table yields the segment.
         If the table has an header, it first sets the columns using the header.
@@ -106,7 +107,7 @@ class TableParser:
             for i, row in enumerate(csvr):
                 try:
                     if skip_empty_row and (len(row)==0 or (len(row)==1 and row[0].strip()=='')):
-                        print(f"Warning, empty row {row} skipped")
+                        logger.print(f"Warning: empty row {row} skipped ({table_path}, {i+line_offset})")
                         continue
                     yield self.get_segment(row, i + line_offset)
                 except ValueError as e:

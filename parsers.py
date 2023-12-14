@@ -1,5 +1,5 @@
 from typing import Callable
-
+from loggers import Logger
 from pyparsing import Generator
 from generic_parser import TableParser, Column, FloatColumn
 from segment import durSegment, Segment, ConfidenceSegment
@@ -75,7 +75,7 @@ class AudacityParser(TableParser):
     ):
         super().__init__(**collect_args(locals())) 
 
-    def get_segments(self, table_path: str, skip_empty_row=True, *args, **kwargs) -> Generator[Segment, None, None]:
+    def get_segments(self, table_path: str, skip_empty_row=True, logger: Logger = Logger(), *args, **kwargs) -> Generator[Segment, None, None]:
         """
         Returns a generator that for each line of the table yields the segment.
         If the table has an header, it first sets the columns using the header.
@@ -87,7 +87,7 @@ class AudacityParser(TableParser):
             for i, row in enumerate(csvr):
                 try:
                     if skip_empty_row and (len(row)==0 or (len(row)==1 and row[0].strip()=='')):
-                        print(f"Warning, empty row {row} skipped")
+                        logger.print(f"Warning: empty row {row} skipped ({table_path}, {i+line_offset})")
                         continue
                     if row[0] == "\\":
                         # Skip the frequency rows.

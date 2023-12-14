@@ -109,7 +109,7 @@ class Annotations:
                and self.parser.get_audio_rel_no_ext_path(table_path, self.tables_dir) not in list_rel_paths:                
                 continue
             for rel_path, segment in zip(self.parser.get_audio_rel_no_ext_paths(table_path, self.tables_dir), 
-                                         self.parser.get_segments(table_path)):
+                                         self.parser.get_segments(table_path,logger=logger)):
                 if list_rel_paths is not None and rel_path not in list_rel_paths:
                     continue
  
