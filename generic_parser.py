@@ -117,6 +117,10 @@ class TableParser:
         except ValueError as e:
             return False
         return True
+    
+    def empty_row(row: list[str]):
+        return "".join(row).strip() == ""
+
 
     def get_segments(self, table_path: str, skip_empty_row=True, *args, **kwargs) -> Generator[Segment, None, None]:
         """
@@ -125,20 +129,20 @@ class TableParser:
         """
         with open(table_path, encoding='utf-8') as fp:
             csvr = self.csv_reader(fp)
-            empty = lambda row: "".join(row).strip() == ""
 
-            def read_segment(row, line_i):
+            def read_segment(row: list[str], line_i: int):
                 try:
-                    if skip_empty_row and empty(row):
+                    if skip_empty_row and self.empty_row(row):
                         warnings.warn(f"Empty row {row} skipped ({table_path}, {line_i})")
                         return None
                     yield self.get_segment(row, line_i)
                 except ValueError as e:
                     raise ValueError(f"ValueError on row {line_i}: {e}")
+                
             line_offset = self.line_offset
             if self.header:
                 theader = next(csvr)
-                while skip_empty_row and empty(theader):
+                while skip_empty_row and self.empty_row(theader):
                     theader = next(csvr)
                     line_offset += 1
                 try:
@@ -194,22 +198,40 @@ class TableParser:
         rows = []
         with open(table_path) as fp:
             csvr = self.csv_reader(fp)
-            if self.header:
-                theader = next(csvr)
-                self.set_coli(theader)
-                rows.append(theader)
-            for i, row in enumerate(csvr):
-                line_i = i + self.line_offset
+
+            def change_label(line_i):
                 try:
-                    if skip_empty_row and (len(row)==0 or (len(row)==1 and row[0].strip()=='')):
+                    if skip_empty_row and self.empty_row(row):
                         warnings.warn(f"Empty row {row} skipped ({table_path}, {line_i})")
-                        continue
+                        return
                     old_label = self.label.get_val(row)
                     new_label = label_mapper.do_all(old_label)
                     new_row = self.label.set_val(new_label, row)
                     rows.append(new_row)
                 except ValueError as e:
                     raise ValueError(f"ValueError on row {line_i}: {e}")
+                
+            line_offset = self.line_offset
+            
+            if self.header:
+                theader = next(csvr)
+                while skip_empty_row and self.empty_row(theader):
+                    theader = next(csvr)
+                    line_offset += 1
+                try:
+                    self.set_coli(theader)
+                except ValueError:
+                    change_label(line_offset-1)
+
+            if self.header:
+                theader = next(csvr)
+                self.set_coli(theader)
+                rows.append(theader)
+            for i, row in enumerate(csvr):
+                line_i = i + self.line_offset
+                change_label(line_i)
+
+
 
         if new_table_path is None:
             # By default overwrite (dangerous!)
