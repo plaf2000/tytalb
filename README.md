@@ -9,23 +9,21 @@ In order to do so, please follow the instruction inside the `parsers.py` script.
 Possible commands:
 
 ```
-usage: . [-h] {extract,train,validate} ...
-
 Train and validate a custom BirdNet classifier based on given annotations by first exporting 3.0s segments.
 
 positional arguments:
-  {extract,train,validate}
-    extract             Extracts audio chunks from long audio files using FFmpeg based on the given parser annotation. The result consists of       
-                        multiple audio files ("chunks"), each 3s long, placed in the corresponding labelled folder, which can be used to train the  
-                        BirdNet custom classifier.
-    train               Train a custom classifier using BirdNet Analyzer. The args are passed directly to `train.py` from BirdNet.
-    validate            Validate the output from BirdNet Analyzer with some ground truth annotations. This creates two confusion matrices: one for  
-                        the time and one for the count of (in)correctly identified segments of audio. From this, recall, precision and f1 score     
-                        are computed and output in different tables.
+  {extract,correct,train,validate}
+    extract             Extracts audio chunks from long audio files using FFmpeg based on the given parser annotation. The result consists of multiple audio       
+                        files ("chunks"), each 3s long, placed in the corresponding labelled folder, which can be used to train the BirdNet custom classifier.     
+    correct             Correct the labels based on the mappings in a json file.
+    train               Train a custom classifier using BirdNet Analyzer. The args are passed directly to train.py from BirdNet.
+    validate            Validate the output from BirdNet Analyzer with some ground truth annotations. This creates two confusion matrices: one for the time        
+                        (confusion_matrix_time.csv) and one for the count (confusion_matrix_count.csv) of (in)correctly identified segments of audio. From this,    
+                        recall, precision and f scores are computed and output in different tables (validation_metrics_count.csv and
+                        validation_metrics_time.csv).
 
 options:
   -h, --help            show this help message and exit
-
 ```
 
 ## Requirements
@@ -78,8 +76,19 @@ options:
                         Whether to include the relative path in the output file name (default = False). If two filenames are not unique, this will  
                         be done automatically.
 ```
+## Label mapping/correction
 
 the `-l` or `--label-settings` allow to easily manage different labels without the need to delete or rename folders or move their contents.
+
+The mapping to new labels is made by the following steps:
+1. Cleaning
+    1. Strip
+    1. Single white space
+    1. Lowercase
+1. Substitute
+1. Map
+
+
 You can use the `"map"` attribute to map the labels you have inside the provided tables to new labels.
 For example
 ```json

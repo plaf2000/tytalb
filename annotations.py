@@ -21,18 +21,19 @@ from collections import defaultdict
 
 class LabelMapper:
     def __init__(self, label_settings_path: str, *args, **kwargs):
+
         try:
             with open(label_settings_path, encoding='utf-8') as fp:
                 self.json_obj = json.load(fp)
         except:
             self.json_obj = {}
-        self.map_dict: dict = {} if not "map" in self.json_obj else self.json_obj["map"]
-        self.sub_dict: dict = {} if not "sub" in self.json_obj else self.json_obj["sub"]
-        self.whitelist = None if not "whitelist" in self.json_obj else self.json_obj["whitelist"]
-        self.blacklist = None if not "blacklist" in self.json_obj else self.json_obj["blacklist"]
-        self.strip = True if not "strip" in self.json_obj else self.json_obj["strip"]
-        self.single_ws = True if not "single white space" in self.json_obj else self.json_obj["single white space"]
-        self.lowercase = False if not "lower" in self.json_obj else self.json_obj["lower"]
+        self.map_dict: dict = self.json_obj.setdefault("map", {})
+        self.sub_dict: dict = self.json_obj.setdefault("sub", {})
+        self.whitelist = self.json_obj.setdefault("whitelist", None)
+        self.blacklist = self.json_obj.setdefault("blacklist", None)
+        self.strip = self.json_obj.setdefault("strip", True)
+        self.single_ws = self.json_obj.setdefault("single white space", True)
+        self.lowercase = self.json_obj.setdefault("lower", False)
     
     def black_listed(self, label: str) -> bool:
         if self.whitelist:

@@ -170,7 +170,7 @@ if __name__ == "__main__":
     """
 
     correct_parser = subparsers.add_parser("correct",
-                                           help="Correct the labels based on the mapping in a json file.")
+                                           help="Correct the labels based on the mappings in a json file.")
     
     correct_parser.add_argument("-i", "--input-dir",
                                 dest="tables_dir",
@@ -214,7 +214,7 @@ if __name__ == "__main__":
         Parse arguments to train the model.
     """
     train_parser = subparsers.add_parser("train", help="Train a custom classifier using BirdNet Analyzer. "\
-                                                       "The args are passed directly to `train.py` from BirdNet.")
+                                                       "The args are passed directly to train.py from BirdNet.")
 
 
 
@@ -222,11 +222,11 @@ if __name__ == "__main__":
         Parse arguments to validate BirdNet predictions.
     """
     validate_parser = subparsers.add_parser("validate", help="Validate the output from BirdNet Analyzer with some ground truth annotations. "\
-                                                             "This creates two confusion matrices: one for the time (`confusion_matrix_time.csv`) "\
-                                                             "and one for the count (`confusion_matrix_count.csv`)"\
+                                                             "This creates two confusion matrices: one for the time (confusion_matrix_time.csv) "\
+                                                             "and one for the count (confusion_matrix_count.csv) "\
                                                              "of (in)correctly identified segments of audio. From this, recall, precision and "\
-                                                             "f1 score are computed and output in different tables (`validation_metrics_count.csv` "\
-                                                             "and `validation_metrics_time.csv`).")
+                                                             "f scores are computed and output in different tables (validation_metrics_count.csv "\
+                                                             "and validation_metrics_time.csv).")
 
     validate_parser.add_argument("-gt", "--ground-truth",
                                 dest="tables_dir_gt",
