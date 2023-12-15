@@ -88,6 +88,7 @@ The mapping to new labels is done following this procedure:
 1. Substitute
 1. Map
 1. Black/whitelist
+
 **Be aware of the order** of these operations!
 
 ### Cleaning
@@ -96,14 +97,17 @@ This operations are meant to make the labels simpler and avoid some common typos
 
 #### Strip
 This operation removes white spaces at the beginning and the end of the label - using the `strip()` Python method, since this can be a common typo.
+
 This is **always performed by default**. To avoid this behaviour, set the `"strip"` attribute to `false` in the json file.
 
 #### Single whitespace
 This operation replaces multiple white spaces, including tabs and other special white space characters, in the label, since this can be a common typo.
+
 This is **always performed by default**. To avoid this behaviour, set the `"single whitespace"` attribute to `false` in the json file.
 
 #### Lowercase
 This operation turns the label into lowercase, to make the labels case insensitive and avoid case-typos.
+
 This is **not performed by default**. To set this behaviour, set the `"lower"` attribute to `true` in the json file.
 
 ### Substitute
@@ -117,7 +121,20 @@ You can substitute portions of labels matching some regex by using the `"sub"` a
 }
 ```
 
-Will substitute any portion of labels starting containing "alb", followed by any number of Unicode word characters with just "alb", so for instance "tytalbalb" and "tytalb1" will become simply "tytalb".
+will substitute any portion of labels starting containing "alb", followed by any number of Unicode word characters with just "alb", so for instance "tytalbalb" and "tytalb1" will become simply "tytalb".
+
+To keep parts of the original label use the regex group and include the group number in the substitution string. For example
+
+```json
+{
+    "sub" : {
+        "(\\w+),(\\w+)": "\\1, \\2"
+    }
+}
+
+```
+will turn "tytalb,Barn Owl" to "tytalb, Barn Owl".
+
 
 **Note:** backslashes have to be escaped, so in this case `\w` becomes `\\w`.
 
@@ -141,7 +158,7 @@ match the label pattern. For example
     }
 }
 ```
-Will match any label starting with "tyt", followed by any number of Unicode word characters.
+will match any label starting with "tyt", followed by any number of Unicode word characters.
 
 
 
@@ -170,6 +187,28 @@ will ignore all labels matching `r"tyt\w*"`.
 will instead consider all the other labels as noise.
 
 **Note:** Whitelist have precedence over blacklist.
+
+### Example
+```json
+{
+    "map": {
+        "TURPHI": "Song thrush, Turdus philomelos",
+        "TRIOCH": "Green sandpiper, Tringa ochropus",
+        "EMBHOR": "Ortolan bunting, Emberiza hortulana",
+        "ANTTRI": "Tree pipit, Anthus trivialis",
+        "CORVID": "Corvidae",
+        "NotNocMig PICVIR": "Green woodpecker, Picus viridis, notnocmig",
+        "IXOMIN": "Little bittern, Ixobrychus minutus",
+        "TURILI": "Redwing, Turdus iliacus",
+        "GALCHL": "Moorhen, Gallinula chloropus",
+    },
+    "sub": {
+        "'": "",
+        "(\\w+),(\\w+)": "\\1, \\2"
+    },
+    "lower": true
+}
+```
 
 ## Validate
 

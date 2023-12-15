@@ -63,6 +63,7 @@ class LabelMapper:
             label = re.sub(k, v, label)
         return label
     
+    
     def do_all(self, label: str) -> str:
         return self.map(self.sub(self.clean(label)))
 
