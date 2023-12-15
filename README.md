@@ -120,6 +120,8 @@ You can substitute portions of labels matching some regex by using the `"sub"` a
     }
 }
 ```
+**Note:** backslashes have to be escaped, so in this case `\w` becomes `\\w`.
+
 
 will substitute any portion of labels starting containing "alb", followed by any number of Unicode word characters with just "alb", so for instance "tytalbalb" and "tytalb1" will become simply "tytalb".
 
@@ -136,7 +138,6 @@ To keep parts of the original label use the regex group and include the group nu
 will turn "tytalb,Barn Owl" to "tytalb, Barn Owl".
 
 
-**Note:** backslashes have to be escaped, so in this case `\w` becomes `\\w`.
 
 ### Map
 
