@@ -80,13 +80,15 @@ options:
 
 the `-l` or `--label-settings` allow to easily manage different labels without the need to delete or rename folders or move their contents, just by changing the settings on the corresponding json file.
 
-The mapping to new labels is done following this procedure (be aware of the order!):
+The mapping to new labels is done following this procedure:
 1. Cleaning
     1. Strip
     1. Single whitespace
     1. Lowercase
 1. Substitute
 1. Map
+1. Black/whitelist
+**Be aware of the order** of these operations!
 
 ### Cleaning
 
@@ -116,7 +118,8 @@ You can substitute portions of labels matching some regex by using the `"sub"` a
 ```
 
 Will substitute any portion of labels starting containing "alb", followed by any number of Unicode word characters with just "alb", so for instance "tytalbalb" and "tytalb1" will become simply "tytalb".
-Note that **backslashes have to be escaped**, so in this case `\w` becomes `\\w`.
+
+**Note:** backslashes have to be escaped, so in this case `\w` becomes `\\w`.
 
 ### Map
 
@@ -140,6 +143,9 @@ match the label pattern. For example
 ```
 Will match any label starting with "tyt", followed by any number of Unicode word characters.
 
+
+
+### White/blacklist
 It is also possible to whitelist or blacklist labels using the corresponding
 attributes. Note that the black-/whitelisting will be applied once the label 
 is already mapped to the new one.
@@ -163,20 +169,7 @@ will ignore all labels matching `r"tyt\w*"`.
 ```
 will instead consider all the other labels as noise.
 
-Whitelist have precedence over blacklist.
-
-Furthermore, please note that by default labels get automatically cleaned from leading and ending whitespaces using the `strip()` Python method. This is to fix common typos. To avoid this behaviour, you can set the `strip` attribute to `false` in the json settings:
-
-```json
-{
-    "strip": false,    
-    "map": {
-        "tyt\\w*": "Tyto"
-    },
-    "whitelist": ["Tyto"]
-}
-```
-The strip occours before any other operation, i.e. the order is `strip -> map -> black/white list`.
+**Note:** Whitelist have precedence over blacklist.
 
 ## Validate
 
