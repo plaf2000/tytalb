@@ -77,26 +77,9 @@ class AudacityParser(TableParser):
     ):
         super().__init__(**collect_args(locals())) 
 
-    def get_segments(self, table_path: str, skip_empty_row=True, logger: Logger = Logger(), *args, **kwargs) -> Generator[Segment, None, None]:
-        """
-        Returns a generator that for each line of the table yields the segment.
-        If the table has an header, it first sets the columns using the header.
-        """
+    def skip_row(row: list[str], skip_empty_row: bool):
+        return (len(row) > 0 and row[0] == "\\") or (skip_empty_row and "".join(row).strip() == "")
 
-        with open(table_path, encoding='utf-8') as fp:
-            csvr = self.csv_reader(fp)
-            line_offset = 1
-            for i, row in enumerate(csvr):
-                try:
-                    if skip_empty_row and (len(row)==0 or (len(row)==1 and row[0].strip()=='')):
-                        warnings.warn(f"Warning: empty row {row} skipped ({table_path}, line {i+line_offset})")
-                        continue
-                    if row[0] == "\\":
-                        # Skip the frequency rows.
-                        continue
-                    yield self.get_segment(row, line_offset + i)
-                except ValueError as e:
-                    raise ValueError(f"Exception on row {i}: {e}")
 
 class RavenParser(TableParser): 
     def __init__(self, 
@@ -111,22 +94,9 @@ class RavenParser(TableParser):
         **kwargs
     ):
         super().__init__(**collect_args(locals())) 
-
-    def get_segments(self, table_path: str, *args, **kwargs):
-        seen_segments = set()
-        with open(table_path, encoding='utf-8') as fp:
-            csvr = self.csv_reader(fp)
-            line_number = 0
-            if self.header:
-                theader = next(csvr)
-                self.set_coli(theader)
-                line_number += 1
-            for row in csvr:
-                line_number += 1
-                segment = self.get_segment(row, line_number)
-                if (next_segment := (segment.tstart, segment.tend, segment.label)) not in seen_segments:
-                    yield segment
-                    seen_segments.add(next_segment)
+    
+    def get_fname_no_ext(self, fname: str):
+        return fname.split(".")[0]
 
 
 class KaleidoscopeParser(TableParser):
@@ -152,28 +122,50 @@ class KaleidoscopeParser(TableParser):
         ],
         self.all_columns += self.audio_file_path
 
-    def get_audio_rel_no_ext_paths(self, table_path: str, tables_base_path: str):
+    def get_audio_rel_no_ext_paths(self, table_path: str, tables_base_path: str, skip_empty_row=True):
         with open(table_path, encoding='utf-8') as fp:
             csvr = self.csv_reader(fp)
             if self.header:
                 theader = next(csvr)
                 self.set_coli(theader)
-            for row in csvr:
-                rel_path: str = os.path.join(*[p.get_val(row) for p in self.audio_file_path[1:]])
-                yield rel_path.split(".")[0]
-        
-    
-    # def get_audio_files(self, table_path, *args, **kwargs):
-    #     with open(table_path) as fp:
-    #         csvr = csv.reader(fp, delimiter=self.delimiter)
-    #         if self.header:
-    #             theader = next(csvr)
-    #             self.set_coli(theader)
-    #         for row in csvr:
-    #             audio_file_path = os.path.join(*[p.get_val(row) for p in self.audio_file_path])
-    #             self.all_audio_files.setdefault(audio_file_path, AudioFile(audio_file_path))
-    #             yield self.all_audio_files[audio_file_path]
+            
+            seen_segs = set()
 
+            def read_segment(row: list[str], line_i: int):
+                try:
+                    if self.skip_row(row, skip_empty_row):
+                        warnings.warn(f"Empty row {row} skipped ({table_path}, {line_i})")
+                        return
+                    seg = self.get_segment(row, line_i)
+                    if seg in seen_segs:
+                        # If two segments have same time start, end and label, only keep one
+                        return
+                    seen_segs.add(seg)
+                    yield seg
+                except ValueError as e:
+                    raise ValueError(f"ValueError on row {line_i}: {e}")
+                
+            csvr = self.csv_reader(fp)
+
+            line_offset = self.line_offset
+            if self.header:
+                theader = next(csvr)
+                while self.skip_row(theader, skip_empty_row):
+                    # Skip possible empty row in the beginning
+                    theader = next(csvr)
+                    line_offset += 1
+                try:
+                    self.set_coli(theader)
+                except ValueError:
+                    # Try to interpret the first row not as a header
+                    if read_segment(row, 0) is not None:
+                        rel_path: str = os.path.join(*[p.get_val(theader) for p in self.audio_file_path[1:]])
+                        yield self.get_fname_no_ext(rel_path)
+                
+            for row in csvr:
+                if read_segment(row, 0) is not None:
+                    rel_path: str = os.path.join(*[p.get_val(row) for p in self.audio_file_path[1:]])
+                    yield self.get_fname_no_ext(rel_path)
 
 
 class BirdNetRavenParser(RavenParser):
@@ -196,7 +188,9 @@ class BirdNetRavenParser(RavenParser):
         self.confidence = FloatColumn("Confidence", 11)
         self.columns: list[Column] = [self.tstart, self.tend, self.label, self.confidence]
         self.all_columns.append(self.confidence)
-
+    
+    def get_fname_no_ext(self, fname: str):
+        return fname.split(".")[0]
 
 
 class BirdNetCSVParser(TableParser):
