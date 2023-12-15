@@ -32,7 +32,7 @@ class LabelMapper:
         self.whitelist = self.json_obj.setdefault("whitelist", None)
         self.blacklist = self.json_obj.setdefault("blacklist", None)
         self.strip = self.json_obj.setdefault("strip", True)
-        self.single_ws = self.json_obj.setdefault("single white space", True)
+        self.single_ws = self.json_obj.setdefault("single whitespace", True)
         self.lowercase = self.json_obj.setdefault("lower", False)
     
     def black_listed(self, label: str) -> bool:

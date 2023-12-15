@@ -78,16 +78,47 @@ options:
 ```
 ## Label mapping/correction
 
-the `-l` or `--label-settings` allow to easily manage different labels without the need to delete or rename folders or move their contents.
+the `-l` or `--label-settings` allow to easily manage different labels without the need to delete or rename folders or move their contents, just by changing the settings on the corresponding json file.
 
-The mapping to new labels is made by the following steps:
+The mapping to new labels is done following this procedure (be aware of the order!):
 1. Cleaning
     1. Strip
-    1. Single white space
+    1. Single whitespace
     1. Lowercase
 1. Substitute
 1. Map
 
+### Cleaning
+
+This operations are meant to make the labels simpler and avoid some common typos.
+
+#### Strip
+This operation removes white spaces at the beginning and the end of the label - using the `strip()` Python method, since this can be a common typo.
+This is **always performed by default**. To avoid this behaviour, set the `"strip"` attribute to `false` in the json file.
+
+#### Single whitespace
+This operation replaces multiple white spaces, including tabs and other special white space characters, in the label, since this can be a common typo.
+This is **always performed by default**. To avoid this behaviour, set the `"single whitespace"` attribute to `false` in the json file.
+
+#### Lowercase
+This operation turns the label into lowercase, to make the labels case insensitive and avoid case-typos.
+This is **not performed by default**. To set this behaviour, set the `"lower"` attribute to `true` in the json file.
+
+### Substitute
+
+You can substitute portions of labels matching some regex by using the `"sub"` attribute in the json settings. For example
+```json
+{
+    "sub": {
+        "alb\\w*": "alb"
+    }
+}
+```
+
+Will substitute any portion of labels starting containing "alb", followed by any number of Unicode word characters with just "alb", so for instance "tytalbalb" and "tytalb1" will become simply "tytalb".
+Note that **backslashes have to be escaped**, so in this case `\w` becomes `\\w`.
+
+### Map
 
 You can use the `"map"` attribute to map the labels you have inside the provided tables to new labels.
 For example
@@ -108,7 +139,6 @@ match the label pattern. For example
 }
 ```
 Will match any label starting with "tyt", followed by any number of Unicode word characters.
-Please note that `\w` has to be escaped into `\\w`.
 
 It is also possible to whitelist or blacklist labels using the corresponding
 attributes. Note that the black-/whitelisting will be applied once the label 
