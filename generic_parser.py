@@ -125,20 +125,34 @@ class TableParser:
         """
         with open(table_path, encoding='utf-8') as fp:
             csvr = self.csv_reader(fp)
-            if self.header:
-                theader = next(csvr)
-                self.set_coli(theader)
-                
+            empty = lambda row: "".join(row).strip() == ""
 
-            for i, row in enumerate(csvr):
-                line_i = i + self.line_offset
+            def read_segment(row, line_i):
                 try:
-                    if skip_empty_row and (len(row)==0 or (len(row)==1 and row[0].strip()=='')):
+                    if skip_empty_row and empty(row):
                         warnings.warn(f"Empty row {row} skipped ({table_path}, {line_i})")
-                        continue
+                        return None
                     yield self.get_segment(row, line_i)
                 except ValueError as e:
-                    raise ValueError(f"ValueError on row {i}: {e}")
+                    raise ValueError(f"ValueError on row {line_i}: {e}")
+            line_offset = self.line_offset
+            if self.header:
+                theader = next(csvr)
+                while skip_empty_row and empty(theader):
+                    theader = next(csvr)
+                    line_offset += 1
+                try:
+                    self.set_coli(theader)
+                except ValueError:
+                    yield read_segment(theader, line_offset-1)
+                
+            for i, row in enumerate(csvr):
+                line_i = i + line_offset
+                seg = read_segment(row, line_i)
+                if seg is None:
+                    continue
+                yield seg
+
 
     def get_audio_rel_no_ext_path(self, table_path: str, tables_base_path: str):
         table_basename = os.path.basename(table_path)
@@ -165,7 +179,6 @@ class TableParser:
             csvr = self.csv_reader(fp)
             for _ in csvr:
                 yield audio_rel_no_ext_paths
-
 
     def is_table(self, table_path: str) -> bool:
         """

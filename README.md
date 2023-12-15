@@ -47,8 +47,8 @@ options:
                         Path to the folder of the (manual) annotations.
   -re RECURSIVE, --recursive RECURSIVE
                         Wether to look for tables inside the root directory recursively or not (default=True).
-  -f {sonic-visualizer,sv,audacity,ac,raven,rvn,kaleidoscope,ks,birdnet_raven,bnrv}, --annotation-format {sonic-visualizer,sv,audacity,ac,raven,rvn,kaleidoscope,ks,birdnet_raven,bnrv}
-                        Annotation format.
+  -f {any,sonic-visualizer,sv,audacity,ac,raven,rvn,kaleidoscope,ks,birdnet_raven,bnrv}, --annotation-format {any,sonic-visualizer,sv,audacity,ac,raven,rvn,kaleidoscope,ks,birdnet_raven,bnrv}
+                        Annotation format (default="any").
   --header, --no-header
                         Whether the annotation tables have an header. The default value is defined by the annotations parser.
   -a AUDIO_FILES_DIR, --audio-root-dir AUDIO_FILES_DIR
