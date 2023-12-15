@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 import warnings
 from copy import deepcopy
 from functools import cached_property
@@ -473,23 +474,52 @@ def validate(
         precision = {}
         recall = {}
         f1score = {}
+        true_positive = {}
         false_positive = {}
         false_negative = {}
+
+        def fnscore(n: float, p: float, r: float):
+            return 0 if p==0 and r==0 else (1 + n**2) * ((p * n**2) * r) / (p + r)
+        precscore = lambda tp, fp: 0 if tp==0 else tp / (tp + fp)
+        recallscore = lambda tp, fn: 0 if tp==0 else tp / (tp + fn)
+
+        data = {}
+
         for i, label in enumerate(labels):
             if (binary or n_labels==2) and label == NOISE_LABEL:
                 continue
-            tp = matrix[i,i]
             mask = np.ones_like(matrix[i], np.bool_)
             mask[i] = 0
-            fp = np.dot(matrix[:, i], mask)
-            fn = np.dot(matrix[i, :], mask)
-            p = 0 if tp==0 else tp / (tp + fp)
-            r = 0 if tp==0 else tp / (tp + fn)
-            false_positive[label] = fp
-            false_negative[label] = fn
-            precision[label] = p
-            recall[label] = r
-            f1score[label] =  0 if p==0 and r==0 else 2 * (p * r) / (p + r)
+            true_positive[label] = tp = matrix[i,i]
+            false_positive[label] = fp = np.dot(matrix[:, i], mask)
+            false_negative[label] = fn = np.dot(matrix[i, :], mask)
+            precision[label] = p = precscore(tp, fp)
+            recall[label] = r = recallscore(tp, fn)
+            f1score[label] =  fnscore(1, p, r)
+
+        macro_average_label = "Macro-average"
+        micro_average_label = "Micro-average"
+        
+        non_noise_values = lambda dict: [dict[k] for k in dict.keys() if k != NOISE_LABEL and k !=macro_average_label and k!=micro_average_label]
+
+        # Macro-average:
+
+        false_positive[macro_average_label] = pd.NA
+        false_negative[macro_average_label] = pd.NA
+        precision[macro_average_label] = p = np.mean(non_noise_values(precision))
+        recall[macro_average_label] = r = np.mean(non_noise_values(recall))
+        f1score[macro_average_label] =  fnscore(1, p, r)
+    
+
+         # Micro-average:
+        false_positive[micro_average_label] = fp = np.sum(non_noise_values(false_positive))
+        false_negative[micro_average_label] = fn = np.sum(non_noise_values(false_negative))
+        tp = np.sum(list(true_positive.values()))
+        precision[micro_average_label] = p =  precscore(tp, fp)
+        recall[micro_average_label] = r = recallscore(tp, fn)
+        f1score[micro_average_label] = 0 if p + r == 0 else 2 * p * r / (p + r)
+
+
         df_matrix = pd.DataFrame(data=matrix, index=labels, columns=labels)
         # TODO: TN is never set. Maybe should be computed, but not so relevant.
         if df_matrix.loc[NOISE_LABEL, NOISE_LABEL].dtype == np.int64:
