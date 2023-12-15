@@ -470,46 +470,57 @@ def validate(
             set_conf_time(NOISE_LABEL, seg_tv.label, seg_tv.dur - tot_overlapping)
 
     
-    def stats(matrix):
+    def stats(matrix, f_scores_betas = [.5, 1, 2]):
         precision = {}
         recall = {}
         f1score = {}
+        f2score = {}
         true_positive = {}
         false_positive = {}
         false_negative = {}
 
-        def fnscore(n: float, p: float, r: float):
-            return 0 if p==0 and r==0 else (1 + n**2) * ((p * n**2) * r) / (p + r)
+        def fbeta_score(beta: float, p: float, r: float):
+            return 0 if p + r == 0 else (1 + beta**2) * (p * r) / ((p * beta**2) + r)
+        
+
         precscore = lambda tp, fp: 0 if tp==0 else tp / (tp + fp)
         recallscore = lambda tp, fn: 0 if tp==0 else tp / (tp + fn)
 
         data = {}
+        
+        f_scores = {b: {} for b in f_scores_betas}
 
         for i, label in enumerate(labels):
-            if (binary or n_labels==2) and label == NOISE_LABEL:
+            if label == NOISE_LABEL and (binary or n_labels==2):
                 continue
             mask = np.ones_like(matrix[i], np.bool_)
             mask[i] = 0
             true_positive[label] = tp = matrix[i,i]
             false_positive[label] = fp = np.dot(matrix[:, i], mask)
             false_negative[label] = fn = np.dot(matrix[i, :], mask)
+            if label == NOISE_LABEL:
+                # Skip because TP noise are unknown
+                continue
             precision[label] = p = precscore(tp, fp)
             recall[label] = r = recallscore(tp, fn)
-            f1score[label] =  fnscore(1, p, r)
+            for b in f_scores_betas:
+                f_scores[b][label] = fbeta_score(b, p, r)
+
 
         macro_average_label = "Macro-average"
         micro_average_label = "Micro-average"
         
-        non_noise_values = lambda dict: [dict[k] for k in dict.keys() if k != NOISE_LABEL and k !=macro_average_label and k!=micro_average_label]
+        non_noise_values = lambda dict: [dict[k] for k in dict.keys() if k != NOISE_LABEL 
+                                                                         and k != macro_average_label 
+                                                                         and k != micro_average_label]
 
         # Macro-average:
-
         false_positive[macro_average_label] = pd.NA
         false_negative[macro_average_label] = pd.NA
         precision[macro_average_label] = p = np.mean(non_noise_values(precision))
         recall[macro_average_label] = r = np.mean(non_noise_values(recall))
-        f1score[macro_average_label] =  fnscore(1, p, r)
-    
+        for b in f_scores_betas:
+            f_scores[b][macro_average_label] = fbeta_score(b, p, r)
 
          # Micro-average:
         false_positive[micro_average_label] = fp = np.sum(non_noise_values(false_positive))
@@ -517,11 +528,12 @@ def validate(
         tp = np.sum(list(true_positive.values()))
         precision[micro_average_label] = p =  precscore(tp, fp)
         recall[micro_average_label] = r = recallscore(tp, fn)
-        f1score[micro_average_label] = 0 if p + r == 0 else 2 * p * r / (p + r)
+        for b in f_scores_betas:
+            f_scores[b][micro_average_label] = fbeta_score(b, p, r)
 
 
         df_matrix = pd.DataFrame(data=matrix, index=labels, columns=labels)
-        # TODO: TN is never set. Maybe should be computed, but not so relevant.
+        # TODO: TN (TP noise) is never set. Maybe should be computed, but not so relevant.
         if df_matrix.loc[NOISE_LABEL, NOISE_LABEL].dtype == np.int64:
             df_matrix[NOISE_LABEL] = df_matrix[NOISE_LABEL].astype("Int64")
         df_matrix.loc[NOISE_LABEL, NOISE_LABEL] = pd.NA
@@ -530,9 +542,11 @@ def validate(
         data = {
             "precision": precision,
             "recall": recall,
-            "f1 score": f1score,
+        }
+        data |= { f"f{b} score":  f_scores[b] for b in f_scores_betas }
+        data |= {
             "false positive": false_positive,
-            "false negative": false_negative
+            "false negative": false_negative,
         }
         
         df_metrics =  pd.DataFrame(
