@@ -240,15 +240,15 @@ if __name__ == "__main__":
     
     validate_parser.add_argument("-fgt", "--annotation-format-ground-truth",
                                 dest="table_format_gt",
-                                required=True,
                                 choices=ap_names,
-                                help="Annotation format for ground truth data.")
+                                help="Annotation format for ground truth data.",
+                                default="any")
 
     validate_parser.add_argument("-ftv", "--annotation-format-to-validate",
                                 dest="table_format_tv",
                                 choices=ap_names,
                                 help="Annotation format for data to validate (default=raven).",
-                                default="birdnet_raven")
+                                default="any")
     
     validate_parser.add_argument("-o", "--output-dir",
                                 dest="output_dir",

@@ -54,7 +54,7 @@ class SonicParser(TableParser):
         label = Column("LABEL", 4),
         segment_type = Segment,
         audio_file_path = None,
-        header = False,
+        header=True,
         table_fnmatch = "*.csv",
         **kwargs
     ):
@@ -77,7 +77,7 @@ class AudacityParser(TableParser):
     ):
         super().__init__(**collect_args(locals())) 
 
-    def skip_row(row: list[str], skip_empty_row: bool):
+    def skip_row(self, row: list[str], skip_empty_row: bool):
         return (len(row) > 0 and row[0] == "\\") or (skip_empty_row and "".join(row).strip() == "")
 
 
@@ -90,6 +90,7 @@ class RavenParser(TableParser):
         label = Column("Annotation", 10),
         table_fnmatch = "*.txt",
         segment_type = Segment,
+        header=True,
         table_per_file = True,
         **kwargs
     ):
@@ -108,6 +109,7 @@ class KaleidoscopeParser(TableParser):
         label = Column("scientific_name", 5),
         table_fnmatch = "*.csv",
         segment_type = durSegment,
+        header=True,
         table_per_file = False,
         **kwargs
     ):
@@ -141,7 +143,7 @@ class KaleidoscopeParser(TableParser):
                         # If two segments have same time start, end and label, only keep one
                         return
                     seen_segs.add(seg)
-                    yield seg
+                    return seg
                 except ValueError as e:
                     raise ValueError(f"ValueError on row {line_i}: {e}")
                 
@@ -178,6 +180,7 @@ class BirdNetRavenParser(RavenParser):
         table_fnmatch = "*.BirdNET.selection.table.txt",
         segment_type = ConfidenceSegment,
         table_per_file = True,
+        header=True,
         **kwargs
     ):
         super().__init__(**collect_args(locals())) 
@@ -203,6 +206,7 @@ class BirdNetCSVParser(TableParser):
         table_fnmatch = "*.csv",
         segment_type = ConfidenceSegment,
         table_per_file = True,
+        header=True,
         **kwargs
     ):
         super().__init__(**collect_args(locals()))
@@ -243,6 +247,10 @@ class SmartParser:
         parser = self.get_parser(table_path, **kwargs)
         return parser.get_audio_rel_no_ext_paths(table_path, *args, **kwargs)
 
+    def get_audio_rel_no_ext_path(self, table_path: str, tables_base_path: str, **kwargs):
+        parser = self.get_parser(table_path, **kwargs)
+        return parser.get_audio_rel_no_ext_path(table_path, tables_base_path)
+
     def get_parser(self, table_path: str, **parser_kwargs) -> TableParser:
         for ap in available_parsers:
             parser = ap(**parser_kwargs)
@@ -262,9 +270,6 @@ class SmartParser:
     
     def edit_label(self, table_path: str, label_mapper: 'LabelMapper', skip_empty_row=True, new_table_path: str = None, **parser_kwargs):
         self.get_parser(table_path, **parser_kwargs).edit_label(table_path, label_mapper, skip_empty_row, new_table_path)
-
-
-
 
 def get_parser(table_format: str, **parser_kwargs):
     table_format_name = table_format.lower()

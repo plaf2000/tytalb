@@ -118,7 +118,7 @@ class TableParser:
             return False
         return True
     
-    def skip_row(row: list[str], skip_empty_row: bool):
+    def skip_row(self, row: list[str], skip_empty_row: bool):
         return skip_empty_row and "".join(row).strip() == ""
 
 
@@ -143,7 +143,7 @@ class TableParser:
                         # If two segments have same time start, end and label, only keep one
                         return
                     seen_segs.add(seg)
-                    yield seg
+                    return seg
                 except ValueError as e:
                     raise ValueError(f"ValueError on row {line_i}: {e}")
                 
