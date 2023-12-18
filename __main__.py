@@ -335,6 +335,14 @@ if __name__ == "__main__":
                                 type=bool,
                                 action=BooleanOptionalAction,
                                 default=True)
+    
+    validate_parser.add_argument("--single-row",
+                                dest="single_row",
+                                help="Whether to put all the metrics with the same confidence in a same line.\
+                                    This can result in a very large number of columns, but makes it easier to plot graphs (default=True).",
+                                type=bool,
+                                action=BooleanOptionalAction,
+                                default=True)
 
     
     args, custom_args = arg_parser.parse_known_args()
@@ -454,7 +462,6 @@ if __name__ == "__main__":
 
             for t in thresholds:
                 t = round(t, 4)
-                single_row = True
                 conf_stats = defaultdict(lambda: ([pd.DataFrame(), pd.DataFrame()]))
                 conf_stats["time"], conf_stats["count"] = validate(
                     ground_truth = bnt_gt,
@@ -467,13 +474,13 @@ if __name__ == "__main__":
                     overlapping_threshold_s = args.overlapping_threshold_s,
                     skip_missing_gt=args.skip_missing_gt,
                     gt_label_settings_path = gt_label_settings_path, 
-                    single_row = single_row
+                    single_row = args.single_row
                 )
 
                 for m in conf_stats.keys():
                     for i, df in enumerate(conf_stats[m]):
                         df["Confidence threshold"] = np.float64(t)
-                        if i == 1:
+                        if i == 1 and args.single_row:
                             df = df.set_index("Confidence threshold", drop=True)
                         stats[m][i] = pd.concat([stats[m][i], df])
 
