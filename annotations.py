@@ -1,3 +1,4 @@
+import csv
 from dataclasses import dataclass
 import warnings
 from copy import deepcopy
@@ -125,7 +126,7 @@ class Annotations:
         prog_bar = ProgressBar("Reading tables", len(self.tables_paths))
                
                 
-        self.annotation_label_linenumber: dict[str, list[tuple[str, int]]] = dict()
+        self.annotation_label_linenumber: list[tuple[str, int, str]] = []
         
 
         for table_path in self.tables_paths:
@@ -138,12 +139,10 @@ class Annotations:
                                          self.parser.get_segments(table_path,logger=logger)):
                 if list_rel_paths is not None and rel_path not in list_rel_paths:
                     continue
-                # print(next(segment))
                 path_safe_label = ' '.join(re.sub(r'[\\/*?:"<>|]', '', segment.label).split())
 
-                if path_safe_label not in self.annotation_label_linenumber.keys():
-                    self.annotation_label_linenumber[path_safe_label] = []
-                self.annotation_label_linenumber[path_safe_label].append([rel_path, segment.line_number])
+
+                self.annotation_label_linenumber.append((rel_path, segment.line_number, segment.label))
 
                 basename = os.path.basename(rel_path)
                 if rel_path in self.audio_files.keys():
@@ -233,13 +232,14 @@ class Annotations:
         self.load(logger, **kwargs)
         self.map_labels(**kwargs)
 
-        annotation_label_linenumber_dir = os.path.join(export_dir, "label_filename_linenumber")
-        os.makedirs(annotation_label_linenumber_dir, exist_ok = True)
-        
-        for key, value in self.annotation_label_linenumber.items():
-            annotation_label_linenumber_logger = Logger(logfile_path=os.path.join(annotation_label_linenumber_dir, f"{key}.txt",), log_date=False)
-            for sub_list in value:
-                annotation_label_linenumber_logger.print(f"   {sub_list}")
+        annotation_label_linenumber_file = os.path.join(export_dir, "labels_filenames_linenumber.csv")
+       
+
+        df = pd.DataFrame(self.annotation_label_linenumber, columns=["File name", "Line number", "Label"])\
+               .sort_values(by=["Label", "File name", "Line number"])\
+               .reset_index(drop=True)
+        df.index = df.index.rename("Annotation id")
+        df.to_csv(annotation_label_linenumber_file)        
 
         if not stats_only:
             self.load_audio_paths(audio_files_dir, **kwargs)
