@@ -6,8 +6,7 @@ from segment import Segment
 import json
 import fnmatch
 import re
-from loggers import Logger 
-import shutil
+from loggers import Logger
 from parsers import get_parser
 from loggers import ProcLogger, Logger, ProgressBar 
 from stats import calculate_and_save_stats
@@ -27,13 +26,26 @@ class LabelMapper:
         except:
             self.json_obj = {}
         self.map_dict: dict = {} if not "map" in self.json_obj else self.json_obj["map"]
+        self.sub_dict: dict = {} if not "sub" in self.json_obj else self.json_obj["sub"]
         self.whitelist = None if not "whitelist" in self.json_obj else self.json_obj["whitelist"]
         self.blacklist = None if not "blacklist" in self.json_obj else self.json_obj["blacklist"]
+        self.strip = True if not "strip" in self.json_obj else self.json_obj["strip"]
+        self.single_ws = True if not "single white space" in self.json_obj else self.json_obj["single white space"]
+        self.lowercase = False if not "lower" in self.json_obj else self.json_obj["lower"]
     
     def black_listed(self, label: str) -> bool:
         if self.whitelist:
             return label not in self.whitelist
         return label in self.blacklist if self.blacklist else False
+    
+    def clean(self, label: str) -> str:
+        if self.strip:
+            label = label.strip()
+        if self.single_ws:
+            label = " ".join(label.split())
+        if self.lowercase:
+            label = label.lower()
+        return label
     
     def map(self, label: str) -> str:
         for k, v in self.map_dict.items():
@@ -44,13 +56,32 @@ class LabelMapper:
             label = "Noise"
         return label
     
+    def sub(self, label: str) -> str:
+        for k, v in self.sub_dict.items():
+            label = re.sub(k, v, label)
+        return label
+    
+    def do_all(self, label: str) -> str:
+        return self.map(self.sub(self.clean(label)))
+
+    
+    
 class SegmentsWrapper:
-    def __init__(self, unique = True, segments: list[Segment] | None  = None, audio_file: AudioFile | None = None):
+    def __init__(self, unique = True, audio_file: AudioFile | None = None, segments: list[Segment] | None  = None):
         if segments is None:
             segments = []
         self.unique = unique
         self.segments: list[Segment] = segments
         self.audio_file: AudioFile | None = audio_file
+    
+    
+    @property
+    def segments_interval_tree(self):
+        if self.segments:
+            return self.segments[0].get_intervaltree(self.segments)
+        else:
+            return Segment.get_intervaltree(self.segments)
+    
         
 
 class Annotations:
@@ -70,7 +101,10 @@ class Annotations:
 
         if recursive_subfolders:
             for dirpath, dirs, files in os.walk(self.tables_dir):
-                for filename in fnmatch.filter(files, self.parser.table_fnmatch):
+                for filename in files:
+                    if not self.parser.is_table(filename):
+                        continue
+
                     fpath = os.path.join(dirpath, filename)
                     self.tables_paths.append(fpath)
         else:
@@ -86,23 +120,26 @@ class Annotations:
 
         self.audio_files: dict[str, SegmentsWrapper] = dict()
         prog_bar = ProgressBar("Reading tables", len(self.tables_paths))
-
-
-        self.annotation_label_linenumber = dict()
-
-
-        if list_rel_paths is not None and rel_path not in list_rel_paths:
-            break
+               
+                
+        self.annotation_label_linenumber: dict[str, list[tuple[str, int]]] = dict()
+        
 
         for table_path in self.tables_paths:
+            if self.parser.is_table_per_file(table_path)\
+               and list_rel_paths is not None\
+               and self.parser.get_audio_rel_no_ext_path(table_path, self.tables_dir) not in list_rel_paths:                
+                continue
             for rel_path, segment in zip(self.parser.get_audio_rel_no_ext_paths(table_path, self.tables_dir), 
-                                         self.parser.get_segments(table_path)):
+                                         self.parser.get_segments(table_path,logger=logger)):
+                if list_rel_paths is not None and rel_path not in list_rel_paths:
+                    continue
  
-                segment.label = ' '.join(re.sub(r'[\\/*?:"<>|]', '', segment.label).lower().split())
+                path_safe_label = ' '.join(re.sub(r'[\\/*?:"<>|]', '', segment.label).split())
 
-                if segment.label not in self.annotation_label_linenumber.keys():
-                    self.annotation_label_linenumber[segment.label] = []
-                self.annotation_label_linenumber[segment.label].append([rel_path, segment.line_number])
+                if path_safe_label not in self.annotation_label_linenumber.keys():
+                    self.annotation_label_linenumber[path_safe_label] = []
+                self.annotation_label_linenumber[path_safe_label].append([rel_path, segment.line_number])
 
                 basename = os.path.basename(rel_path)
                 if rel_path in self.audio_files.keys():
@@ -130,8 +167,18 @@ class Annotations:
             label_mapper = LabelMapper(label_settings_path)
             for af_wrap in self.audio_files.values():
                 for seg in af_wrap.segments:
-                    seg.label = label_mapper.map(seg.label)
+                    seg.label = label_mapper.do_all(seg.label)
                     prog_bar.print(1)
+            prog_bar.terminate()
+    
+    def correct_labels(self, out_dir: str, label_settings_path=None,  **kwargs):
+        if label_settings_path is not None and os.path.isfile(label_settings_path):
+            prog_bar = ProgressBar("Correcting labels", len(self.tables_paths))
+            label_mapper = LabelMapper(label_settings_path)
+            for table_path in self.tables_paths:
+                out_path = os.path.join(out_dir, os.path.relpath(table_path, self.tables_dir))
+                self.parser.edit_label(table_path, label_mapper, new_table_path=out_path)
+                prog_bar.print(1)
             prog_bar.terminate()
     
     def load_audio_paths(self, audio_files_dir: str, **kwargs):
@@ -238,8 +285,6 @@ class Annotations:
             copy.audio_files[rel_path].segments = [s for s in segs if s.confidence >= confidence_threshold]
         return copy
 
-        
-
 
     def validate(self, other: 'Annotations', *args, **kwargs):
         validate(ground_truth=self, to_validate=other, *args, **kwargs) 
@@ -255,6 +300,7 @@ def validate(
         late_start = False,
         early_stop = False,
         skip_missing_gt = True,
+        logger: Logger = Logger(log=False),
         **kwargs
         ):
     """
@@ -284,15 +330,13 @@ def validate(
         to_validate.load(list_rel_paths=gt_paths)
         if filter_confidence is not None:
             to_validate = to_validate.filter_confidence(filter_confidence)
-
-
+        
+    if not ground_truth.audio_files:
+        raise ValueError("No ground truth annotations found.")
 
     all_rel_paths = set(ground_truth.audio_files.keys()) | set(to_validate.audio_files.keys())
     labels: set[str] = set()
     overlapping_threshold = TimeUnit(overlapping_threshold_s)
-
-
-
 
 
     # Union the labels in ground truth and set to validate
@@ -300,8 +344,6 @@ def validate(
         for af_wrapper in bnt.audio_files.values():
             for seg in af_wrapper.segments:
                 labels.add(seg.label)
-
-
     
     labels.add(NOISE_LABEL)
     labels = sorted(labels)
@@ -363,6 +405,7 @@ def validate(
         # If there are no labels in the ground truth, there are only FP
         # Unless skip_missing_gt is True
         if not rel_path in ground_truth.audio_files:
+            warnings.warn(f"{rel_path} not found in ground truth annotations.")
             for seg in af_tv.segments:
                 if seg.label != NOISE_LABEL:
                     set_both(NOISE_LABEL, seg.label, seg.dur)
@@ -370,6 +413,8 @@ def validate(
         
         # If there are no labels in the validation, there are only FN
         if not rel_path in to_validate.audio_files:
+            warnings.warn(f"{rel_path} not found in annotations to validate.")
+
             for seg in af_gt.segments:
                 if seg.label != NOISE_LABEL:
                     set_both(seg.label, NOISE_LABEL, seg.dur)
@@ -380,7 +425,7 @@ def validate(
 
         def interval_tree(af: SegmentsWrapper):
             # If late_start and early_stop, restrict the interval
-            return Segment.get_intervaltree([s for s in af.segments if s.label!=NOISE_LABEL 
+            return Segment.get_intervaltree([s for s in af.segments if s.label != NOISE_LABEL 
                                              and (not late_start or s.tend >= min_tstart)
                                              and (not early_stop or s.tstart <= max_tend)])
         
@@ -451,7 +496,7 @@ def validate(
             df_matrix[NOISE_LABEL] = df_matrix[NOISE_LABEL].astype("Int64")
         df_matrix.loc[NOISE_LABEL, NOISE_LABEL] = pd.NA
 
-        df_matrix.index.name = "True\\Prediction"
+        df_matrix.index.name = r"True\Prediction"
         data = {
             "precision": precision,
             "recall": recall,
@@ -469,9 +514,9 @@ def validate(
     return  stats(conf_time_matrix), stats(conf_count_matrix)
 
 def plot_stats(stats: tuple[pd.DataFrame, pd.DataFrame], fout: str):
+    # TODO: Implement this
     conf, metrics = stats
     labels = conf.columns.drop(["Confidence"])
-    print(labels)
 
 
 def plot_both_stats(statss, fouts):
