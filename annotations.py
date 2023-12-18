@@ -305,6 +305,7 @@ def validate(
         early_stop = False,
         skip_missing_gt = True,
         logger: Logger = Logger(log=False),
+        single_row = False,
         **kwargs
         ):
     """
@@ -460,7 +461,7 @@ def validate(
 
         for seg_tv in segs_tv:
             seg_tv = Segment.from_interval(seg_tv)
-            overlapping = segs_gt[seg_tv.begin:seg_tv.end]
+            overlapping = segs_gt[seg_tv.begin: seg_tv.end]
             if len(overlapping) == 0:
                 # The annotation to validate have no label for this interval, therefore FN
                 set_both(NOISE_LABEL, seg_tv.label, seg_gt.dur)
@@ -476,8 +477,6 @@ def validate(
     def stats(matrix, f_scores_betas = [.5, 1, 2]):
         precision = {}
         recall = {}
-        f1score = {}
-        f2score = {}
         true_positive = {}
         false_positive = {}
         false_negative = {}
@@ -542,6 +541,8 @@ def validate(
         df_matrix.loc[NOISE_LABEL, NOISE_LABEL] = pd.NA
 
         df_matrix.index.name = r"True\Prediction"
+
+
         data = {
             "precision": precision,
             "recall": recall,
@@ -551,18 +552,27 @@ def validate(
             "false positive": false_positive,
             "false negative": false_negative,
         }
-        
+
+
+        if single_row:
+            new_data = dict()
+            for label in labels + [macro_average_label, micro_average_label]:
+                for metric_name, metric_values in data.items():
+                    if label in metric_values:
+                        new_data[f"{label} {metric_name}"] = [metric_values[label]]
+            data = new_data
+
         df_metrics =  pd.DataFrame(
             data,
         )
 
         return df_matrix, df_metrics
 
-    return  stats(conf_time_matrix), stats(conf_count_matrix)
+    return stats(conf_time_matrix), stats(conf_count_matrix)
 
 def plot_stats(stats: tuple[pd.DataFrame, pd.DataFrame], fout: str):
     # TODO: Implement this
-    conf, metrics = stats
+    conf, metrics = stats   
     labels = conf.columns.drop(["Confidence"])
 
 

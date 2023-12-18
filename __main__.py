@@ -1,3 +1,4 @@
+from collections import defaultdict
 import subprocess
 from annotations import Annotations, validate
 from parsers import ap_names
@@ -446,14 +447,16 @@ if __name__ == "__main__":
 
         gt_label_settings_path = default_label_settings(args.gt_label_settings_path, args.tables_dir_gt)
         
+        stats: dict[str, list[pd.DataFrame, pd.DataFrame]] = defaultdict(lambda: ([pd.DataFrame(), pd.DataFrame()]))
 
         if args.confidence_thresholds is not None:
             thresholds = np.linspace(args.confidence_thresholds_start, args.confidence_thresholds_end, args.confidence_thresholds)
-            stats_time: list[pd.DataFrame, pd.DataFrame] = [pd.DataFrame(), pd.DataFrame()]
-            stats_count: list[pd.DataFrame, pd.DataFrame] = [pd.DataFrame(), pd.DataFrame()]
+
             for t in thresholds:
                 t = round(t, 4)
-                stime, scount = validate(
+                single_row = True
+                conf_stats = defaultdict(lambda: ([pd.DataFrame(), pd.DataFrame()]))
+                conf_stats["time"], conf_stats["count"] = validate(
                     ground_truth = bnt_gt,
                     to_validate = bnt_tv,
                     filter_confidence = t,
@@ -463,21 +466,21 @@ if __name__ == "__main__":
                     early_stop = args.early_stop,
                     overlapping_threshold_s = args.overlapping_threshold_s,
                     skip_missing_gt=args.skip_missing_gt,
-                    gt_label_settings_path = gt_label_settings_path
+                    gt_label_settings_path = gt_label_settings_path, 
+                    single_row = single_row
                 )
 
-                for s in [stime, scount]:
-                    for df in s:
-                        df["Confidence threshold"] = t
-                        
-                for i, df in enumerate(stime):
-                    stats_time[i] = pd.concat([stats_time[i], df])
+                for m in conf_stats.keys():
+                    for i, df in enumerate(conf_stats[m]):
+                        df["Confidence threshold"] = np.float64(t)
+                        if i == 1:
+                            df = df.set_index("Confidence threshold", drop=True)
+                        stats[m][i] = pd.concat([stats[m][i], df])
 
-                for i, df in enumerate(scount):
-                    stats_count[i] = pd.concat([stats_count[i], df])
+
                 
         else:
-            stats_time, stats_count = validate(
+            stats["time"], stats["count"] = validate(
                 ground_truth = bnt_gt,
                 to_validate = bnt_tv,
                 binary = args.binary,
@@ -497,8 +500,8 @@ if __name__ == "__main__":
             df_matrix.to_csv(fname("confusion_matrix"))
             df_metrics.to_csv(fname("validation_metrics"))
         
-        save_stats(stats_time, "time")
-        save_stats(stats_count, "count")
+        save_stats(stats["time"], "time")
+        save_stats(stats["count"], "count")
 
 
     
