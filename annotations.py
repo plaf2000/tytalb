@@ -126,8 +126,9 @@ class Annotations:
         prog_bar = ProgressBar("Reading tables", len(self.tables_paths))
                
                 
-        self.annotation_label_linenumber: list[tuple[str, int, str]] = []
+        self.annotation_label_linenumber_df: list[tuple[str, int, str]] = []
         
+        self.annotation_label_linenumber: dict[str, list[tuple[str, int]]] = dict()
 
         for table_path in self.tables_paths:
             if self.parser.is_table_per_file(table_path)\
@@ -139,10 +140,10 @@ class Annotations:
                                          self.parser.get_segments(table_path,logger=logger)):
                 if list_rel_paths is not None and rel_path not in list_rel_paths:
                     continue
-                path_safe_label = ' '.join(re.sub(r'[\\/*?:"<>|]', '', segment.label).split())
-
-
-                self.annotation_label_linenumber.append((rel_path, segment.line_number, segment.label))
+                
+                label = ''.join(re.sub(r'[<>:"/\|?*]', '_', segment.label))
+                self.annotation_label_linenumber.setdefault(label, []).append([rel_path, segment.line_number])
+                self.annotation_label_linenumber_df.append((rel_path, segment.line_number, segment.label))
 
                 basename = os.path.basename(rel_path)
                 if rel_path in self.audio_files.keys():
@@ -232,10 +233,20 @@ class Annotations:
         self.load(logger, **kwargs)
         self.map_labels(**kwargs)
 
-        annotation_label_linenumber_file = os.path.join(export_dir, "labels_filenames_linenumber.csv")
-       
 
-        df = pd.DataFrame(self.annotation_label_linenumber, columns=["File name", "Line number", "Label"])
+        annotation_label_linenumber_dir = os.path.join(export_dir, "label_filename_linenumber")
+        os.makedirs(annotation_label_linenumber_dir, exist_ok = True)
+        
+        for key, value in self.annotation_label_linenumber.items():
+            fname = os.path.join(annotation_label_linenumber_dir, f"{key}.txt")
+            with open(fname, "w", newline="") as fp:
+                csw = csv.writer(fp, delimiter="\t")
+                csw.writerow(("File relative path", "Line number"))
+                csw.writerows(value)
+
+        annotation_label_linenumber_file = os.path.join(export_dir, "labels_filenames_linenumber.csv")
+
+        df = pd.DataFrame(self.annotation_label_linenumber_df, columns=["File name", "Line number", "Label"])
         df["Occurrences"] = 1
         df_occur = df.groupby("Label").sum()["Occurrences"]
         for label in df_occur.index:
@@ -260,6 +271,8 @@ class Annotations:
                 # If the filename is not unique (or the user decides to) include  
                 # the relative path in the output filename.
                 af = af_wrap.audio_file
+                if af is None:
+                    continue
                 path = os.path.normpath(os.path.dirname(af.rel_path))
                 splits = path.split(os.sep)
                 if path!=".":
@@ -272,7 +285,6 @@ class Annotations:
 
                 stats_pad[label][0] += segment_pad.dur
                 stats_pad[label][1] += 1
-                
             if not stats_only:
                 af_wrap.audio_file.export_all_birdnet(export_dir, af_wrap.segments, proc_logger=proc_logger, logger=logger, progress_bar=prog_bar, **kwargs)
 
@@ -528,7 +540,7 @@ def validate(
         for b in f_scores_betas:
             f_scores[b][macro_average_label] = fbeta_score(b, p, r)
 
-         # Micro-average:
+        # Micro-average:
         false_positive[micro_average_label] = fp = np.sum(non_noise_values(false_positive))
         false_negative[micro_average_label] = fn = np.sum(non_noise_values(false_negative))
         tp = np.sum(list(true_positive.values()))
