@@ -235,8 +235,12 @@ class Annotations:
         annotation_label_linenumber_file = os.path.join(export_dir, "labels_filenames_linenumber.csv")
        
 
-        df = pd.DataFrame(self.annotation_label_linenumber, columns=["File name", "Line number", "Label"])\
-               .sort_values(by=["Label", "File name", "Line number"])\
+        df = pd.DataFrame(self.annotation_label_linenumber, columns=["File name", "Line number", "Label"])
+        df["Occurrences"] = 1
+        df_occur = df.groupby("Label").sum()["Occurrences"]
+        for label in df_occur.index:
+            df.loc[df["Label"] == label, "Occurrences"] = df_occur[label]
+        df = df.sort_values(by=["Occurrences","Label", "File name", "Line number"])\
                .reset_index(drop=True)
         df.index = df.index.rename("Annotation id")
         df.to_csv(annotation_label_linenumber_file)        
