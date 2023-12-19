@@ -120,10 +120,7 @@ class Annotations:
 
         self.audio_files: dict[str, SegmentsWrapper] = dict()
         prog_bar = ProgressBar("Reading tables", len(self.tables_paths))
-               
-                
         self.annotation_label_linenumber: dict[str, list[tuple[str, int]]] = dict()
-        
 
         for table_path in self.tables_paths:
             if self.parser.is_table_per_file(table_path)\
@@ -134,12 +131,11 @@ class Annotations:
                                          self.parser.get_segments(table_path,logger=logger)):
                 if list_rel_paths is not None and rel_path not in list_rel_paths:
                     continue
- 
-                path_safe_label = ' '.join(re.sub(r'[\\/*?:"<>|]', '', segment.label).split())
 
-                if path_safe_label not in self.annotation_label_linenumber.keys():
-                    self.annotation_label_linenumber[path_safe_label] = []
-                self.annotation_label_linenumber[path_safe_label].append([rel_path, segment.line_number])
+                if (label := ' '.join(re.sub(r'[<>:"/\|?*]', '_', segment.label).split())) not in self.annotation_label_linenumber.keys():
+                    self.annotation_label_linenumber[label] = []
+
+                self.annotation_label_linenumber[label].append([rel_path, segment.line_number])
 
                 basename = os.path.basename(rel_path)
                 if rel_path in self.audio_files.keys():
@@ -252,6 +248,8 @@ class Annotations:
                 # If the filename is not unique (or the user decides to) include  
                 # the relative path in the output filename.
                 af = af_wrap.audio_file
+                if af is None:
+                    continue
                 path = os.path.normpath(os.path.dirname(af.rel_path))
                 splits = path.split(os.sep)
                 if path!=".":
@@ -264,7 +262,6 @@ class Annotations:
 
                 stats_pad[label][0] += segment_pad.dur
                 stats_pad[label][1] += 1
-                
             if not stats_only:
                 af_wrap.audio_file.export_all_birdnet(export_dir, af_wrap.segments, proc_logger=proc_logger, logger=logger, progress_bar=prog_bar, **kwargs)
 
