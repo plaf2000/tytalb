@@ -1,3 +1,4 @@
+from collections import defaultdict
 import subprocess
 from annotations import Annotations, validate
 from parsers import ap_names
@@ -170,7 +171,7 @@ if __name__ == "__main__":
     """
 
     correct_parser = subparsers.add_parser("correct",
-                                           help="Correct the labels based on the mapping in a json file.")
+                                           help="Correct the labels based on the mappings in a json file.")
     
     correct_parser.add_argument("-i", "--input-dir",
                                 dest="tables_dir",
@@ -214,7 +215,7 @@ if __name__ == "__main__":
         Parse arguments to train the model.
     """
     train_parser = subparsers.add_parser("train", help="Train a custom classifier using BirdNet Analyzer. "\
-                                                       "The args are passed directly to `train.py` from BirdNet.")
+                                                       "The args are passed directly to train.py from BirdNet.")
 
 
 
@@ -222,11 +223,11 @@ if __name__ == "__main__":
         Parse arguments to validate BirdNet predictions.
     """
     validate_parser = subparsers.add_parser("validate", help="Validate the output from BirdNet Analyzer with some ground truth annotations. "\
-                                                             "This creates two confusion matrices: one for the time (`confusion_matrix_time.csv`) "\
-                                                             "and one for the count (`confusion_matrix_count.csv`)"\
+                                                             "This creates two confusion matrices: one for the time (confusion_matrix_time.csv) "\
+                                                             "and one for the count (confusion_matrix_count.csv) "\
                                                              "of (in)correctly identified segments of audio. From this, recall, precision and "\
-                                                             "f1 score are computed and output in different tables (`validation_metrics_count.csv` "\
-                                                             "and `validation_metrics_time.csv`).")
+                                                             "f scores are computed and output in different tables (validation_metrics_count.csv "\
+                                                             "and validation_metrics_time.csv).")
 
     validate_parser.add_argument("-gt", "--ground-truth",
                                 dest="tables_dir_gt",
@@ -240,15 +241,15 @@ if __name__ == "__main__":
     
     validate_parser.add_argument("-fgt", "--annotation-format-ground-truth",
                                 dest="table_format_gt",
-                                required=True,
                                 choices=ap_names,
-                                help="Annotation format for ground truth data.")
+                                help="Annotation format for ground truth data.",
+                                default="any")
 
     validate_parser.add_argument("-ftv", "--annotation-format-to-validate",
                                 dest="table_format_tv",
                                 choices=ap_names,
                                 help="Annotation format for data to validate (default=raven).",
-                                default="birdnet_raven")
+                                default="any")
     
     validate_parser.add_argument("-o", "--output-dir",
                                 dest="output_dir",
@@ -331,6 +332,14 @@ if __name__ == "__main__":
                                  dest="skip_missing_gt",
                                  help="Whether to skip the missing ground-truth file or consider them as noise."\
                                       "(default = True).",
+                                type=bool,
+                                action=BooleanOptionalAction,
+                                default=True)
+    
+    validate_parser.add_argument("--single-row",
+                                dest="single_row",
+                                help="Whether to put all the metrics with the same confidence in a same line.\
+                                    This can result in a very large number of columns, but makes it easier to plot graphs (default=True).",
                                 type=bool,
                                 action=BooleanOptionalAction,
                                 default=True)
@@ -446,14 +455,15 @@ if __name__ == "__main__":
 
         gt_label_settings_path = default_label_settings(args.gt_label_settings_path, args.tables_dir_gt)
         
+        stats: dict[str, list[pd.DataFrame, pd.DataFrame]] = defaultdict(lambda: ([pd.DataFrame(), pd.DataFrame()]))
 
         if args.confidence_thresholds is not None:
             thresholds = np.linspace(args.confidence_thresholds_start, args.confidence_thresholds_end, args.confidence_thresholds)
-            stats_time: list[pd.DataFrame, pd.DataFrame] = [pd.DataFrame(), pd.DataFrame()]
-            stats_count: list[pd.DataFrame, pd.DataFrame] = [pd.DataFrame(), pd.DataFrame()]
+
             for t in thresholds:
                 t = round(t, 4)
-                stime, scount = validate(
+                conf_stats = defaultdict(lambda: ([pd.DataFrame(), pd.DataFrame()]))
+                conf_stats["time"], conf_stats["count"] = validate(
                     ground_truth = bnt_gt,
                     to_validate = bnt_tv,
                     filter_confidence = t,
@@ -463,21 +473,21 @@ if __name__ == "__main__":
                     early_stop = args.early_stop,
                     overlapping_threshold_s = args.overlapping_threshold_s,
                     skip_missing_gt=args.skip_missing_gt,
-                    gt_label_settings_path = gt_label_settings_path
+                    gt_label_settings_path = gt_label_settings_path, 
+                    single_row = args.single_row
                 )
 
-                for s in [stime, scount]:
-                    for df in s:
-                        df["Confidence threshold"] = t
-                        
-                for i, df in enumerate(stime):
-                    stats_time[i] = pd.concat([stats_time[i], df])
+                for m in conf_stats.keys():
+                    for i, df in enumerate(conf_stats[m]):
+                        df["Confidence threshold"] = np.float64(t)
+                        if i == 1 and args.single_row:
+                            df = df.set_index("Confidence threshold", drop=True)
+                        stats[m][i] = pd.concat([stats[m][i], df])
 
-                for i, df in enumerate(scount):
-                    stats_count[i] = pd.concat([stats_count[i], df])
+
                 
         else:
-            stats_time, stats_count = validate(
+            stats["time"], stats["count"] = validate(
                 ground_truth = bnt_gt,
                 to_validate = bnt_tv,
                 binary = args.binary,
@@ -497,8 +507,8 @@ if __name__ == "__main__":
             df_matrix.to_csv(fname("confusion_matrix"))
             df_metrics.to_csv(fname("validation_metrics"))
         
-        save_stats(stats_time, "time")
-        save_stats(stats_count, "count")
+        save_stats(stats["time"], "time")
+        save_stats(stats["count"], "count")
 
 
     

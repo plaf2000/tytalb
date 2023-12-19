@@ -9,23 +9,21 @@ In order to do so, please follow the instruction inside the `parsers.py` script.
 Possible commands:
 
 ```
-usage: . [-h] {extract,train,validate} ...
-
 Train and validate a custom BirdNet classifier based on given annotations by first exporting 3.0s segments.
 
 positional arguments:
-  {extract,train,validate}
-    extract             Extracts audio chunks from long audio files using FFmpeg based on the given parser annotation. The result consists of       
-                        multiple audio files ("chunks"), each 3s long, placed in the corresponding labelled folder, which can be used to train the  
-                        BirdNet custom classifier.
-    train               Train a custom classifier using BirdNet Analyzer. The args are passed directly to `train.py` from BirdNet.
-    validate            Validate the output from BirdNet Analyzer with some ground truth annotations. This creates two confusion matrices: one for  
-                        the time and one for the count of (in)correctly identified segments of audio. From this, recall, precision and f1 score     
-                        are computed and output in different tables.
+  {extract,correct,train,validate}
+    extract             Extracts audio chunks from long audio files using FFmpeg based on the given parser annotation. The result consists of multiple audio       
+                        files ("chunks"), each 3s long, placed in the corresponding labelled folder, which can be used to train the BirdNet custom classifier.     
+    correct             Correct the labels based on the mappings in a json file.
+    train               Train a custom classifier using BirdNet Analyzer. The args are passed directly to train.py from BirdNet.
+    validate            Validate the output from BirdNet Analyzer with some ground truth annotations. This creates two confusion matrices: one for the time        
+                        (confusion_matrix_time.csv) and one for the count (confusion_matrix_count.csv) of (in)correctly identified segments of audio. From this,    
+                        recall, precision and f scores are computed and output in different tables (validation_metrics_count.csv and
+                        validation_metrics_time.csv).
 
 options:
   -h, --help            show this help message and exit
-
 ```
 
 ## Requirements
@@ -49,8 +47,8 @@ options:
                         Path to the folder of the (manual) annotations.
   -re RECURSIVE, --recursive RECURSIVE
                         Wether to look for tables inside the root directory recursively or not (default=True).
-  -f {sonic-visualizer,sv,audacity,ac,raven,rvn,kaleidoscope,ks,birdnet_raven,bnrv}, --annotation-format {sonic-visualizer,sv,audacity,ac,raven,rvn,kaleidoscope,ks,birdnet_raven,bnrv}
-                        Annotation format.
+  -f {any,sonic-visualizer,sv,audacity,ac,raven,rvn,kaleidoscope,ks,birdnet_raven,bnrv}, --annotation-format {any,sonic-visualizer,sv,audacity,ac,raven,rvn,kaleidoscope,ks,birdnet_raven,bnrv}
+                        Annotation format (default="any").
   --header, --no-header
                         Whether the annotation tables have an header. The default value is defined by the annotations parser.
   -a AUDIO_FILES_DIR, --audio-root-dir AUDIO_FILES_DIR
@@ -78,8 +76,71 @@ options:
                         Whether to include the relative path in the output file name (default = False). If two filenames are not unique, this will  
                         be done automatically.
 ```
+## Label mapping/correction
 
-the `-l` or `--label-settings` allow to easily manage different labels without the need to delete or rename folders or move their contents.
+the `-l` or `--label-settings` allow to easily manage different labels without the need to delete or rename folders or move their contents, just by changing the settings on the corresponding json file.
+
+The mapping to new labels is done following this procedure:
+1. Cleaning
+    1. Strip
+    1. Single whitespace
+    1. Lowercase
+1. Substitute
+1. Map
+1. Black/whitelist
+
+**Be aware of the order** of these operations!
+
+### Cleaning
+
+This operations are meant to make the labels simpler and avoid some common typos.
+
+#### Strip
+This operation removes white spaces at the beginning and the end of the label - using the `strip()` Python method, since this can be a common typo.
+
+This is **always performed by default**. To avoid this behaviour, set the `"strip"` attribute to `false` in the json file.
+
+#### Single whitespace
+This operation replaces multiple white spaces, including tabs and other special white space characters, in the label, since this can be a common typo.
+
+This is **always performed by default**. To avoid this behaviour, set the `"single whitespace"` attribute to `false` in the json file.
+
+#### Lowercase
+This operation turns the label into lowercase, to make the labels case insensitive and avoid case-typos.
+
+This is **not performed by default**. To set this behaviour, set the `"lower"` attribute to `true` in the json file.
+
+### Substitute
+
+You can substitute portions of labels matching some regex by using the `"sub"` attribute in the json settings. For example
+```json
+{
+    "sub": {
+        "alb\\w*": "alb"
+    }
+}
+```
+**Note:** backslashes have to be escaped, so in this case `\w` becomes `\\w`.
+
+
+will substitute any portion of labels starting containing "alb", followed by any number of Unicode word characters with just "alb", so for instance "tytalbalb" and "tytalb1" will become simply "tytalb".
+
+To keep parts of the original label use the regex group and include the group number in the substitution string. For example
+
+```json
+{
+    "sub" : {
+        "(\\w+),(\\w+)": "\\1, \\2"
+    }
+}
+
+```
+will turn "tytalb,Barn Owl" to "tytalb, Barn Owl".
+
+
+
+### Map
+
 You can use the `"map"` attribute to map the labels you have inside the provided tables to new labels.
 For example
 ```json
@@ -98,9 +159,11 @@ match the label pattern. For example
     }
 }
 ```
-Will match any label starting with "tyt", followed by any number of Unicode word characters.
-Please note that `\w` has to be escaped into `\\w`.
+will match any label starting with "tyt", followed by any number of Unicode word characters.
 
+
+
+### White/blacklist
 It is also possible to whitelist or blacklist labels using the corresponding
 attributes. Note that the black-/whitelisting will be applied once the label 
 is already mapped to the new one.
@@ -124,20 +187,29 @@ will ignore all labels matching `r"tyt\w*"`.
 ```
 will instead consider all the other labels as noise.
 
-Whitelist have precedence over blacklist.
+**Note:** Whitelist have precedence over blacklist.
 
-Furthermore, please note that by default labels get automatically cleaned from leading and ending whitespaces using the `strip()` Python method. This is to fix common typos. To avoid this behaviour, you can set the `strip` attribute to `false` in the json settings:
-
+### Example
 ```json
 {
-    "strip": false,    
     "map": {
-        "tyt\\w*": "Tyto"
+        "TURPHI": "Song thrush, Turdus philomelos",
+        "TRIOCH": "Green sandpiper, Tringa ochropus",
+        "EMBHOR": "Ortolan bunting, Emberiza hortulana",
+        "ANTTRI": "Tree pipit, Anthus trivialis",
+        "CORVID": "Corvidae",
+        "NotNocMig PICVIR": "Green woodpecker, Picus viridis, notnocmig",
+        "IXOMIN": "Little bittern, Ixobrychus minutus",
+        "TURILI": "Redwing, Turdus iliacus",
+        "GALCHL": "Moorhen, Gallinula chloropus",
     },
-    "whitelist": ["Tyto"]
+    "sub": {
+        "'": "",
+        "(\\w+),(\\w+)": "\\1, \\2"
+    },
+    "lower": true
 }
 ```
-The strip occours before any other operation, i.e. the order is `strip -> map -> black/white list`.
 
 ## Validate
 

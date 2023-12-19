@@ -1,3 +1,5 @@
+import csv
+from dataclasses import dataclass
 import warnings
 from copy import deepcopy
 from functools import cached_property
@@ -20,18 +22,19 @@ from collections import defaultdict
 
 class LabelMapper:
     def __init__(self, label_settings_path: str, *args, **kwargs):
+
         try:
             with open(label_settings_path, encoding='utf-8') as fp:
                 self.json_obj = json.load(fp)
         except:
             self.json_obj = {}
-        self.map_dict: dict = {} if not "map" in self.json_obj else self.json_obj["map"]
-        self.sub_dict: dict = {} if not "sub" in self.json_obj else self.json_obj["sub"]
-        self.whitelist = None if not "whitelist" in self.json_obj else self.json_obj["whitelist"]
-        self.blacklist = None if not "blacklist" in self.json_obj else self.json_obj["blacklist"]
-        self.strip = True if not "strip" in self.json_obj else self.json_obj["strip"]
-        self.single_ws = True if not "single white space" in self.json_obj else self.json_obj["single white space"]
-        self.lowercase = False if not "lower" in self.json_obj else self.json_obj["lower"]
+        self.map_dict: dict = self.json_obj.setdefault("map", {})
+        self.sub_dict: dict = self.json_obj.setdefault("sub", {})
+        self.whitelist = self.json_obj.setdefault("whitelist", None)
+        self.blacklist = self.json_obj.setdefault("blacklist", None)
+        self.strip = self.json_obj.setdefault("strip", True)
+        self.single_ws = self.json_obj.setdefault("single whitespace", True)
+        self.lowercase = self.json_obj.setdefault("lower", False)
     
     def black_listed(self, label: str) -> bool:
         if self.whitelist:
@@ -60,6 +63,7 @@ class LabelMapper:
         for k, v in self.sub_dict.items():
             label = re.sub(k, v, label)
         return label
+    
     
     def do_all(self, label: str) -> str:
         return self.map(self.sub(self.clean(label)))
@@ -120,22 +124,26 @@ class Annotations:
 
         self.audio_files: dict[str, SegmentsWrapper] = dict()
         prog_bar = ProgressBar("Reading tables", len(self.tables_paths))
+               
+                
+        self.annotation_label_linenumber_df: list[tuple[str, int, str]] = []
+        
         self.annotation_label_linenumber: dict[str, list[tuple[str, int]]] = dict()
 
         for table_path in self.tables_paths:
             if self.parser.is_table_per_file(table_path)\
                and list_rel_paths is not None\
                and self.parser.get_audio_rel_no_ext_path(table_path, self.tables_dir) not in list_rel_paths:                
+                
                 continue
             for rel_path, segment in zip(self.parser.get_audio_rel_no_ext_paths(table_path, self.tables_dir), 
                                          self.parser.get_segments(table_path,logger=logger)):
                 if list_rel_paths is not None and rel_path not in list_rel_paths:
                     continue
-
-                if (label := ' '.join(re.sub(r'[<>:"/\|?*]', '_', segment.label).split())) not in self.annotation_label_linenumber.keys():
-                    self.annotation_label_linenumber[label] = []
-
-                self.annotation_label_linenumber[label].append([rel_path, segment.line_number])
+                
+                label = ''.join(re.sub(r'[<>:"/\|?*]', '_', segment.label))
+                self.annotation_label_linenumber.setdefault(label, []).append([rel_path, segment.line_number])
+                self.annotation_label_linenumber_df.append((rel_path, segment.line_number, segment.label))
 
                 basename = os.path.basename(rel_path)
                 if rel_path in self.audio_files.keys():
@@ -225,13 +233,28 @@ class Annotations:
         self.load(logger, **kwargs)
         self.map_labels(**kwargs)
 
+
         annotation_label_linenumber_dir = os.path.join(export_dir, "label_filename_linenumber")
         os.makedirs(annotation_label_linenumber_dir, exist_ok = True)
         
         for key, value in self.annotation_label_linenumber.items():
-            annotation_label_linenumber_logger = Logger(logfile_path=os.path.join(annotation_label_linenumber_dir, f"{key}.txt",), log_date=False)
-            for sub_list in value:
-                annotation_label_linenumber_logger.print(f"   {sub_list}")
+            fname = os.path.join(annotation_label_linenumber_dir, f"{key}.txt")
+            with open(fname, "w", newline="") as fp:
+                csw = csv.writer(fp, delimiter="\t")
+                csw.writerow(("File relative path", "Line number"))
+                csw.writerows(value)
+
+        annotation_label_linenumber_file = os.path.join(export_dir, "labels_filenames_linenumber.csv")
+
+        df = pd.DataFrame(self.annotation_label_linenumber_df, columns=["File name", "Line number", "Label"])
+        df["Occurrences"] = 1
+        df_occur = df.groupby("Label").sum()["Occurrences"]
+        for label in df_occur.index:
+            df.loc[df["Label"] == label, "Occurrences"] = df_occur[label]
+        df = df.sort_values(by=["Occurrences","Label", "File name", "Line number"])\
+               .reset_index(drop=True)
+        df.index = df.index.rename("Annotation id")
+        df.to_csv(annotation_label_linenumber_file)        
 
         if not stats_only:
             self.load_audio_paths(audio_files_dir, **kwargs)
@@ -298,6 +321,7 @@ def validate(
         early_stop = False,
         skip_missing_gt = True,
         logger: Logger = Logger(log=False),
+        single_row = False,
         **kwargs
         ):
     """
@@ -453,7 +477,7 @@ def validate(
 
         for seg_tv in segs_tv:
             seg_tv = Segment.from_interval(seg_tv)
-            overlapping = segs_gt[seg_tv.begin:seg_tv.end]
+            overlapping = segs_gt[seg_tv.begin: seg_tv.end]
             if len(overlapping) == 0:
                 # The annotation to validate have no label for this interval, therefore FN
                 set_both(NOISE_LABEL, seg_tv.label, seg_gt.dur)
@@ -466,53 +490,105 @@ def validate(
             set_conf_time(NOISE_LABEL, seg_tv.label, seg_tv.dur - tot_overlapping)
 
     
-    def stats(matrix):
+    def stats(matrix, f_scores_betas = [.5, 1, 2]):
         precision = {}
         recall = {}
-        f1score = {}
+        true_positive = {}
         false_positive = {}
         false_negative = {}
+
+        def fbeta_score(beta: float, p: float, r: float):
+            return 0 if p + r == 0 else (1 + beta**2) * (p * r) / ((p * beta**2) + r)
+        
+
+        precscore = lambda tp, fp: 0 if tp==0 else tp / (tp + fp)
+        recallscore = lambda tp, fn: 0 if tp==0 else tp / (tp + fn)
+
+        data = {}
+        
+        f_scores = {b: {} for b in f_scores_betas}
+
         for i, label in enumerate(labels):
-            if (binary or n_labels==2) and label == NOISE_LABEL:
+            if label == NOISE_LABEL and (binary or n_labels==2):
                 continue
-            tp = matrix[i,i]
             mask = np.ones_like(matrix[i], np.bool_)
             mask[i] = 0
-            fp = np.dot(matrix[:, i], mask)
-            fn = np.dot(matrix[i, :], mask)
-            p = 0 if tp==0 else tp / (tp + fp)
-            r = 0 if tp==0 else tp / (tp + fn)
-            false_positive[label] = fp
-            false_negative[label] = fn
-            precision[label] = p
-            recall[label] = r
-            f1score[label] =  0 if p==0 and r==0 else 2 * (p * r) / (p + r)
+            true_positive[label] = tp = matrix[i,i]
+            false_positive[label] = fp = np.dot(matrix[:, i], mask)
+            false_negative[label] = fn = np.dot(matrix[i, :], mask)
+            if label == NOISE_LABEL:
+                # Skip because TP noise are unknown
+                continue
+            precision[label] = p = precscore(tp, fp)
+            recall[label] = r = recallscore(tp, fn)
+            for b in f_scores_betas:
+                f_scores[b][label] = fbeta_score(b, p, r)
+
+
+        macro_average_label = "Macro-average"
+        micro_average_label = "Micro-average"
+        
+        non_noise_values = lambda dict: [dict[k] for k in dict.keys() if k != NOISE_LABEL 
+                                                                         and k != macro_average_label 
+                                                                         and k != micro_average_label]
+
+        # Macro-average:
+        false_positive[macro_average_label] = pd.NA
+        false_negative[macro_average_label] = pd.NA
+        precision[macro_average_label] = p = np.mean(non_noise_values(precision))
+        recall[macro_average_label] = r = np.mean(non_noise_values(recall))
+        for b in f_scores_betas:
+            f_scores[b][macro_average_label] = fbeta_score(b, p, r)
+
+        # Micro-average:
+        false_positive[micro_average_label] = fp = np.sum(non_noise_values(false_positive))
+        false_negative[micro_average_label] = fn = np.sum(non_noise_values(false_negative))
+        tp = np.sum(list(true_positive.values()))
+        precision[micro_average_label] = p =  precscore(tp, fp)
+        recall[micro_average_label] = r = recallscore(tp, fn)
+        for b in f_scores_betas:
+            f_scores[b][micro_average_label] = fbeta_score(b, p, r)
+
+
         df_matrix = pd.DataFrame(data=matrix, index=labels, columns=labels)
-        # TODO: TN is never set. Maybe should be computed, but not so relevant.
+        # TODO: TN (TP noise) is never set. Maybe should be computed, but not so relevant.
         if df_matrix.loc[NOISE_LABEL, NOISE_LABEL].dtype == np.int64:
             df_matrix[NOISE_LABEL] = df_matrix[NOISE_LABEL].astype("Int64")
         df_matrix.loc[NOISE_LABEL, NOISE_LABEL] = pd.NA
 
         df_matrix.index.name = r"True\Prediction"
+
+
         data = {
             "precision": precision,
             "recall": recall,
-            "f1 score": f1score,
-            "false positive": false_positive,
-            "false negative": false_negative
         }
-        
+        data |= { f"f{b} score":  f_scores[b] for b in f_scores_betas }
+        data |= {
+            "false positive": false_positive,
+            "false negative": false_negative,
+        }
+
+
+        if single_row:
+            new_data = dict()
+            for label in labels + [macro_average_label, micro_average_label]:
+                for metric_name, metric_values in data.items():
+                    if label in metric_values:
+                        new_data[f"{label} {metric_name}"] = [metric_values[label]]
+            data = new_data
+
         df_metrics =  pd.DataFrame(
             data,
         )
 
         return df_matrix, df_metrics
 
-    return  stats(conf_time_matrix), stats(conf_count_matrix)
+    return stats(conf_time_matrix), stats(conf_count_matrix)
 
 def plot_stats(stats: tuple[pd.DataFrame, pd.DataFrame], fout: str):
     # TODO: Implement this
-    conf, metrics = stats
+    conf, metrics = stats   
     labels = conf.columns.drop(["Confidence"])
 
 
