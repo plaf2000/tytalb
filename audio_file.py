@@ -5,6 +5,7 @@ from math import ceil
 import os
 import tempfile
 import random
+from typing import Union
 
 import numpy as np 
 from segment import Segment
@@ -14,6 +15,7 @@ import re
 from loggers import Logger, ProcLogger, ProgressBar
 
 from variables import BIRDNET_AUDIO_DURATION, NOISE_LABEL, BIRDNET_SAMPLE_RATE
+
 
 
 dateel_lengths = {
@@ -123,7 +125,7 @@ class AudioFile:
     def export_segments_ffmpeg(
             path: str,
             out_path: str,
-            times: float | list[float],
+            times: Union[float, list[float]],
             ss: TimeUnit=None,
             to: TimeUnit=None,
             ss_s: float=None,
@@ -195,7 +197,7 @@ class AudioFile:
             unsegmented_fpath: str,
             segment_list: str = None,
             tstart: TimeUnit = None,
-            delete_prob: float | None = None,
+            delete_prob: Union[float, None] = None,
             **kwargs,
         ):
         """

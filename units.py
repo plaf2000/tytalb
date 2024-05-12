@@ -1,8 +1,10 @@
+from typing import Union
+
 class TimeUnit(float):
-    def __init__(self, s: float | str = 0, ms: float | str | None = None):
+    def __new__(cls, s: Union[float, str] = 0, ms: Union[float, str, None] = None):
         if ms is not None:
             s = float(ms) / 1000
-        self = float(s)
+        return super().__new__(cls, float(s))
 
     def __add__(self, other):
         return TimeUnit(super().__add__(other))
@@ -16,7 +18,6 @@ class TimeUnit(float):
     def __truediv__(self, other):
         return TimeUnit(super().__truediv__(other))
 
-    
     @property
     def s(self):
         return self
@@ -24,7 +25,6 @@ class TimeUnit(float):
     @property
     def ms(self):
         return int(self * 1000)
-    
     
     def time_str(self, write_all=False) -> str:
         s = round(self.s, ndigits=3)

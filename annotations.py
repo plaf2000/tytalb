@@ -14,6 +14,7 @@ import pandas as pd
 import numpy as np
 import os
 from units import TimeUnit
+from typing import Union
 
 
 class LabelMapper:
@@ -42,12 +43,12 @@ class LabelMapper:
         return label
     
 class SegmentsWrapper:
-    def __init__(self, unique = True, segments: list[Segment] | None  = None, audio_file: AudioFile | None = None):
+    def __init__(self, unique = True, segments: Union[list[Segment], None] = None, audio_file: Union[AudioFile, None] = None):
         if segments is None:
             segments = []
         self.unique = unique
         self.segments: list[Segment] = segments
-        self.audio_file: AudioFile | None = audio_file
+        self.audio_file:   Union[AudioFile, None] = audio_file
         
 
 class Annotations:

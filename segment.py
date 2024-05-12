@@ -1,6 +1,7 @@
+from typing import Union
 from units import TimeUnit
 from variables import BIRDNET_AUDIO_DURATION
-import  intervaltree as it
+import intervaltree as it
 
 
 class Segment(it.Interval):
@@ -8,7 +9,7 @@ class Segment(it.Interval):
     Extends the `intervaltree.Interval` class. Uses `bytearray` to represent the 
     label string in the data, in order to make it mutable.
     """
-    def __new__(cls, tstart_s: float, tend_s: float, label: str | bytearray = "", *args, **kwargs):
+    def __new__(cls, tstart_s: float, tend_s: float, label: Union[str, bytearray] = "", *args, **kwargs):
         if isinstance(label, str):
             label = label.encode()
         if label is None:
@@ -83,14 +84,14 @@ class Segment(it.Interval):
     
 
 class DurSegment(Segment):
-    def __new__(cls, tstart_s: float, dur_s: float, label, *args, **kwargs):
+    def __new__(cls, tstart_s: float, dur_s: float, label: Union[str, bytearray] = "", *args, **kwargs):
         return super().__new__(cls, tstart_s, tstart_s+dur_s, label, *args, **kwargs)
 
 
     
 
 class ConfidenceSegment(Segment):
-    def __init__(self, tstart_s: float, tend_s: float, label: str | bytearray = "", confidence = 1, *args, **kwargs):
+    def __init__(self, tstart_s: float, tend_s: float, label: Union[str, bytearray] = "", confidence: float = 1, *args, **kwargs):
         self.confidence = float(confidence)
 
     def __str__(self):
@@ -105,7 +106,7 @@ class ConfidenceSegment(Segment):
 
 
 class ConfidenceDurSegment(DurSegment):
-    def __init__(self, tstart_s: float, dur: float, label: str | bytearray = "", confidence = 1, *args, **kwargs):
+    def __init__(self, tstart_s: float, dur: float, label: Union[str, bytearray] = "", confidence: float = 1, *args, **kwargs):
         self.confidence = float(confidence)
 
     def __str__(self):
@@ -115,13 +116,3 @@ class ConfidenceDurSegment(DurSegment):
         copy = super().__deepcopy__(memo)
         copy.confidence = self.confidence
         return copy
-
-
-
-
-
-
-
-
-
-
